@@ -3,7 +3,7 @@ import { fileURLToPath } from "node:url"
 import { mergeConfig } from "vite"
 
 const config: StorybookConfig = {
-  stories: ["../stories/{boltz,swap}/**/*.stories.tsx"],
+  stories: ["../stories/{boltz,immortal,swap}/**/*.stories.tsx"],
   addons: [
     "@chromatic-com/storybook",
     "@storybook/addon-vitest",

@@ -84,7 +84,7 @@ function StoryFrame({ children }: { children: React.ReactNode }) {
 }
 
 const meta = {
-  title: "Swap/Public Regtest Demo",
+  title: "Immortal/Public Regtest Demo",
   parameters: { layout: "fullscreen" },
   decorators: [
     (Story) => (
