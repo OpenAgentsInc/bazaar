@@ -314,6 +314,8 @@ test("CSP permits only the signed gateway and direct relay authorities", () => {
   )
   assert.doesNotMatch(csp, /attacker|ws:|http:/)
   assert.match(csp, /'wasm-unsafe-eval'/)
+  assert.match(csp, /script-src 'self' 'nonce-nonce-value' 'strict-dynamic'/)
+  assert.match(csp, /style-src 'self' 'unsafe-inline'/)
 
   const local = buildPublicRegtestCsp(
     "nonce-value",
