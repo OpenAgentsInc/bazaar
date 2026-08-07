@@ -166,12 +166,17 @@ export class PublicRegtestGatewayError extends Error {
 }
 
 export class PublicRegtestGatewayClient {
+  private readonly request: typeof fetch
+
   constructor(
     private readonly config: PublicRegtestConfig,
     private readonly origin: string,
     private readonly storage: PublicSessionStorage,
-    private readonly request: typeof fetch = fetch
+    request: typeof fetch = fetch
   ) {
+    // Window.fetch rejects a method-call receiver other than Window in Chrome.
+    // Binding also keeps injected test transports on one deterministic path.
+    this.request = request.bind(globalThis)
     if (origin !== config.allowedOrigins[0]) {
       throw new PublicRegtestGatewayError(
         "origin_refused",
