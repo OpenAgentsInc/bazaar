@@ -1,0 +1,10 @@
+.git
+.next
+.vercel
+coverage
+node_modules
+playwright-report
+target
+test-results
+tmp
+*.log
