@@ -51,3 +51,8 @@ export {
   usePulse,
   type UsePulseOptions,
 } from "./use-pulse"
+export {
+  VizProgressRail,
+  type VizProgressRailProps,
+  type VizProgressRailStage,
+} from "./progress-rail"

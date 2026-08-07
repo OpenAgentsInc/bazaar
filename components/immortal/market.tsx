@@ -25,6 +25,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card"
+import { ImmortalRecordChainViz } from "@/components/viz/immortal/record-chain"
 import { cn } from "@/lib/utils"
 
 export type ImmortalMarketRecordState =
@@ -54,6 +55,9 @@ export function ImmortalMarketRecordChain({
         </CardDescription>
       </CardHeader>
       <CardContent>
+        <div className="mb-4 overflow-x-auto rounded-xl border border-border p-2">
+          <ImmortalRecordChainViz records={records} />
+        </div>
         <ol className="space-y-0">
           {records.map((record, index) => (
             <li

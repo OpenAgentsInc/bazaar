@@ -24,6 +24,7 @@ import {
   CardTitle,
 } from "@/components/ui/card"
 import { Progress } from "@/components/ui/progress"
+import { VizProgressRail } from "@/components/viz/core"
 import { cn } from "@/lib/utils"
 
 export type ImmortalRelayStage =
@@ -84,6 +85,21 @@ export function ImmortalRelayConnection({
         </CardAction>
       </CardHeader>
       <CardContent>
+        <div className="mb-3">
+          <VizProgressRail
+            stages={relayStages}
+            activeId={closed ? "connecting" : stage}
+            completedIds={
+              stage === "live"
+                ? relayStages.map((item) => item.id)
+                : undefined
+            }
+            error={closed}
+            label={`Relay session progress: ${
+              closed ? "closed" : stage
+            } of connect, authenticate, snapshot, live`}
+          />
+        </div>
         <ol className="space-y-3">
           {relayStages.map((item, index) => {
             const complete =

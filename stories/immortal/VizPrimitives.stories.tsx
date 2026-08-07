@@ -7,6 +7,7 @@ import {
   VizEdge,
   VizNode,
   VizPort,
+  VizProgressRail,
   VizScene,
   VizZone,
   vizPortAnchor,
@@ -284,6 +285,44 @@ export const ZonesAndBoundary: Story = {
     })
     await expect(scene).toBeInTheDocument()
   },
+}
+
+const RAIL_STAGES = [
+  { id: "connecting", label: "Connect" },
+  { id: "authenticating", label: "Authenticate" },
+  { id: "snapshot", label: "Snapshot" },
+  { id: "live", label: "Live" },
+]
+
+export const ProgressRails: Story = {
+  render: () => (
+    <Frame>
+      <Panel title="Progress rail — in progress">
+        <VizProgressRail
+          stages={RAIL_STAGES}
+          activeId="snapshot"
+          label="Relay session progress: snapshot in progress"
+        />
+      </Panel>
+      <Panel title="Progress rail — complete (live is ongoing)">
+        <VizProgressRail
+          stages={RAIL_STAGES}
+          activeId="live"
+          completedIds={RAIL_STAGES.map((stage) => stage.id)}
+          label="Relay session progress: live"
+        />
+      </Panel>
+      <Panel title="Progress rail — error, active label only">
+        <VizProgressRail
+          stages={RAIL_STAGES}
+          activeId="authenticating"
+          error
+          showLabels="active"
+          label="Relay session progress: authentication failed"
+        />
+      </Panel>
+    </Frame>
+  ),
 }
 
 export const GrayscaleAudit: Story = {

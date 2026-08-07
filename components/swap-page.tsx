@@ -33,6 +33,7 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { Separator } from "@/components/ui/separator"
+import { VizProgressRail } from "@/components/viz/core"
 import { useImmortalRuntime } from "@/hooks/use-immortal-runtime"
 import {
   useFundedRegtest,
@@ -1038,6 +1039,20 @@ export function LifecyclePanel({
               ? "Provider B"
               : "Selected provider"}
         </span>
+      </div>
+      <div className="mb-2">
+        <VizProgressRail
+          stages={DEMO_LIFECYCLE_STAGES}
+          activeId={activeStage}
+          completedIds={lifecycle.completedStages}
+          error={lifecycle.state === "error"}
+          showLabels="active"
+          label={`Session lifecycle: ${
+            lifecycle.completedStages.length
+          } of ${DEMO_LIFECYCLE_STAGES.length} stages complete${
+            activeStage ? `, current stage ${activeStage}` : ""
+          }`}
+        />
       </div>
       <ol className="max-h-32 space-y-1 overflow-y-auto overscroll-contain pr-1 text-xs">
         {DEMO_LIFECYCLE_STAGES.map((stage) => {
