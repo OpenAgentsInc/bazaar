@@ -99,11 +99,14 @@ async function completeJourney(page: Page, direction: "reverse" | "submarine") {
         : "Regtest BOLT11 invoice verified locally"
     )
   ).toBeVisible()
-  await expect(
-    page.getByText("2 signed Quotes verified · best route selected")
-  ).toBeVisible({ timeout: 90_000 })
+  const createSwap = page.getByRole("button", { name: "Create Swap" })
+  await expect(createSwap).toBeEnabled({ timeout: 90_000 })
+  await page.getByRole("button", { name: /2 providers.*Fees/ }).click()
   await expect(page.locator("[data-quote-provider]")).toHaveCount(2)
-  await page.getByRole("button", { name: "Create Swap" }).click()
+  await expect(page.locator("[data-quote-provider][data-selected]")).toHaveCount(
+    1
+  )
+  await createSwap.click()
 
   await expect(page.locator("[data-public-regtest-state]")).not.toHaveAttribute(
     "data-public-regtest-state",
