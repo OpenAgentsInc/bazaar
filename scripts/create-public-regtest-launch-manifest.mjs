@@ -11,10 +11,6 @@ const ORIGIN = "https://bazaar.openagents.com"
 const GATEWAY = "https://gateway.34-41-78-122.sslip.io"
 const GATEWAY_SIGNER =
   "cdaf28d7c13097b653fb77396772ddfd749b300f35f2e5c38c0403d2ce8c1ce6"
-const PROVIDER_A =
-  "b13eade9462e005f787a2268375aaf7fa7b7fb29180e7a4a83efe750ff87c6b1"
-const PROVIDER_B =
-  "cb53382f54bca65d5cdf9db41f2307633ab36e534b121c7dfc148de0a0ae1d44"
 const RELAY_CONTRACT_IDENTITY = {
   schema: "openagents.immortal.contract.v1",
   contract_version: 1,
@@ -47,11 +43,18 @@ export async function createPublicRegtestLaunchManifest({
   signingSecret,
   bazaarRevision,
   immortalRevision,
+  providerA,
+  providerB,
   lifetimeSeconds = 86_400,
 }) {
   const secret = lowerHex32(signingSecret, "launch signing secret")
   const bazaar = revision(bazaarRevision, "Bazaar revision")
   const immortal = revision(immortalRevision, "Immortal revision")
+  const providerAPubkey = lowerHex32(providerA, "provider A pubkey")
+  const providerBPubkey = lowerHex32(providerB, "provider B pubkey")
+  if (providerAPubkey === providerBPubkey) {
+    throw new Error("public regtest providers must be distinct")
+  }
   if (
     !Number.isInteger(lifetimeSeconds) ||
     lifetimeSeconds < 600 ||
@@ -95,8 +98,8 @@ export async function createPublicRegtestLaunchManifest({
       relay("wss://relay-b.34-41-78-122.sslip.io"),
     ],
     providers: [
-      provider("provider-a", PROVIDER_A),
-      provider("provider-b", PROVIDER_B),
+      provider("provider-a", providerAPubkey),
+      provider("provider-b", providerBPubkey),
     ],
     allowed_origins: [ORIGIN],
     bounds: {
@@ -199,6 +202,8 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
     signingSecret: process.env.BAZAAR_PUBLIC_REGTEST_SIGNING_SECRET,
     bazaarRevision: values.get("bazaar-revision"),
     immortalRevision: values.get("immortal-revision"),
+    providerA: values.get("provider-a"),
+    providerB: values.get("provider-b"),
     lifetimeSeconds: values.has("lifetime")
       ? Number(values.get("lifetime"))
       : undefined,

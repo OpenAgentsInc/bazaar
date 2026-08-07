@@ -152,7 +152,9 @@ BAZAAR_PUBLIC_REGTEST_SIGNING_SECRET='<64 lower hex>' \
   node scripts/create-public-regtest-launch-manifest.mjs \
   --output /secure/path/public-regtest-envelope.json \
   --bazaar-revision '<deployed Bazaar commit>' \
-  --immortal-revision '<deployed Immortal commit>'
+  --immortal-revision '<deployed Immortal commit>' \
+  --provider-a '<provider-a pubkey from public-ready.json>' \
+  --provider-b '<provider-b pubkey from public-ready.json>'
 ```
 
 Configure the production deployment with the signer printed by that command,
@@ -161,6 +163,11 @@ envelope as `BAZAAR_PUBLIC_REGTEST_MANIFEST`. Never configure the signing secret
 in Vercel. Deploy only after `/readyz` is true and the manifest validates against
 the intended build. Preview origins are intentionally excluded and therefore
 cannot obtain a capability.
+
+Provider identities are required command inputs rather than source constants.
+After an owned topology reset, copy the two role-labelled public keys from the
+new `public-ready.json`, update the gateway provider set, and sign a new launch;
+the script rejects missing, duplicate, or malformed identities.
 
 Rotate the envelope before its 24-hour signed expiry. A rotation keeps the same
 signing key and revisions, creates a new envelope, updates only
