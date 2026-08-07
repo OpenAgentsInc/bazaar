@@ -69,6 +69,7 @@ import {
   projectDemoLifecycle,
   type DemoLifecycleState,
 } from "./lifecycle"
+import { PUBLIC_FUNDED_COMPLETION_WINDOW_SECONDS } from "./public-policy"
 
 type StatusListener = (status: ImmortalRuntimeStatus) => void
 type ProvenanceListener = (provenance: ImmortalRuntimeProvenance | null) => void
@@ -1409,7 +1410,9 @@ function createRfqProfile(
     allowed_script_modes: route.scriptModes,
     asset_pair: [input.inputAssetId, input.outputAssetId],
     confirmation_policy: route.confirmationPolicy,
-    desired_completion_time: now + 600,
+    // Immortal's funded Bitcoin ladder includes the Quote window, twelve
+    // funding blocks, and one confirmation block at ten minutes each.
+    desired_completion_time: now + PUBLIC_FUNDED_COMPLETION_WINDOW_SECONDS,
     destination_commitment_sha256: input.destination.commitmentSha256,
     firm_quote_required: true,
     input_amount: input.inputAmount,

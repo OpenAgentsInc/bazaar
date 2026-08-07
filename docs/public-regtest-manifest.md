@@ -103,6 +103,12 @@ direction, amount, and expiry. It is idempotent for an exact retry and fails
 closed if any bound value changes. The capability remains confined to the
 authorization header.
 
+Every public funded RFQ requests a three-hour completion window. This exceeds
+Immortal's 300-second Quote window plus its twelve-block funding and one-block
+confirmation ladder at ten minutes per Bitcoin block. The allocated submarine
+invoice uses the same three-hour rail expiry, while the private allocation
+response remains actionable for only ten minutes.
+
 Immortal's requester worker obtains two funded Quotes, selects deterministically,
 releases the loser, and exposes only its exact authorized Bitcoin-broadcast or
 Lightning-payment effect. Bazaar replays that exact effect to the capability

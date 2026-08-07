@@ -29,6 +29,10 @@ import {
   resetPublicManifestCacheForTests,
 } from "./public-manifest"
 import { publicRequesterRuntimeConfig } from "./public-runtime"
+import {
+  PUBLIC_FUNDED_COMPLETION_WINDOW_SECONDS,
+  PUBLIC_FUNDED_MINIMUM_LADDER_SECONDS,
+} from "./public-policy"
 
 const NOW = 1_800_000_000
 const BAZAAR_REVISION = "11".repeat(20)
@@ -207,6 +211,13 @@ test("projects both signed relays into provider-specific requester lanes", () =>
         assetId.includes("bip122:0f9188f13cb7b2c9e5c72a6b65eeada4")
       )
     )
+  )
+})
+
+test("public funded completion window outlives the provider timeout ladder", () => {
+  assert.ok(
+    PUBLIC_FUNDED_COMPLETION_WINDOW_SECONDS >
+      PUBLIC_FUNDED_MINIMUM_LADDER_SECONDS
   )
 })
 
