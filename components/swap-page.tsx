@@ -83,7 +83,7 @@ const assetUi = {
   },
 } as const
 
-function AssetIcon({ ticker }: { ticker: MarketAssetTicker }) {
+export function AssetIcon({ ticker }: { ticker: MarketAssetTicker }) {
   const { iconSrc } = assetUi[ticker]
 
   return (
@@ -93,6 +93,7 @@ function AssetIcon({ ticker }: { ticker: MarketAssetTicker }) {
         alt=""
         width={34}
         height={34}
+        loading="eager"
         className="size-[2.125rem]"
       />
     </span>
@@ -125,7 +126,7 @@ function BoltzArrowDownIcon({ className }: { className?: string }) {
   )
 }
 
-function AssetPicker({
+export function AssetPicker({
   ticker,
   options,
   onValueChange,
@@ -172,7 +173,7 @@ function AssetPicker({
   )
 }
 
-function AmountField({
+export function AmountField({
   side,
   amount,
   ticker,
@@ -523,7 +524,7 @@ export function SwapPage({
   )
 }
 
-function FundedSwapContent({
+export function FundedSwapContent({
   runtime,
   onAuthorize,
 }: {
@@ -618,7 +619,7 @@ function FundedSwapContent({
   )
 }
 
-function FundedAmountField({
+export function FundedAmountField({
   side,
   ticker,
   amount,
@@ -648,7 +649,7 @@ function FundedAmountField({
   )
 }
 
-function VerificationTile({
+export function VerificationTile({
   label,
   value,
   detail,
@@ -676,7 +677,11 @@ function VerificationTile({
   )
 }
 
-function FundedEvidencePanel({ session }: { session: FundedSessionManifest }) {
+export function FundedEvidencePanel({
+  session,
+}: {
+  session: FundedSessionManifest
+}) {
   return (
     <Collapsible className="mt-3 rounded-xl border border-border bg-secondary">
       <CollapsibleTrigger className="group flex w-full items-center justify-between px-3 py-2.5 text-left text-xs font-semibold text-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring">
@@ -745,7 +750,13 @@ function FundedEvidencePanel({ session }: { session: FundedSessionManifest }) {
   )
 }
 
-function EvidenceValue({ label, value }: { label: string; value: string }) {
+export function EvidenceValue({
+  label,
+  value,
+}: {
+  label: string
+  value: string
+}) {
   const [copied, setCopied] = useState(false)
   return (
     <div className="flex items-center gap-2">
@@ -812,7 +823,7 @@ function fundedActionLabel(
     : "Authorize Lightning invoice payment"
 }
 
-function LifecyclePanel({
+export function LifecyclePanel({
   lifecycle,
 }: {
   lifecycle: Exclude<DemoLifecycleState, { readonly state: "idle" }>
@@ -893,7 +904,7 @@ function primaryActionLabel(lifecycle: DemoLifecycleState): string {
   }[lifecycle.state]
 }
 
-function QuoteSummary({
+export function QuoteSummary({
   quotes,
   direction,
 }: {
@@ -963,7 +974,7 @@ function QuoteSummary({
   )
 }
 
-function QuoteRow({
+export function QuoteRow({
   quote,
   selected,
 }: {
@@ -1017,7 +1028,7 @@ function QuoteCountdown({ deadline }: { deadline: number }) {
   return <span>expires in {seconds}s</span>
 }
 
-function RuntimePopover({
+export function RuntimePopover({
   mode,
   onModeChange,
   modeLocked,
@@ -1123,7 +1134,11 @@ function RuntimePopover({
   )
 }
 
-function FundedRuntimeDisclosure({ runtime }: { runtime: FundedRuntimeState }) {
+export function FundedRuntimeDisclosure({
+  runtime,
+}: {
+  runtime: FundedRuntimeState
+}) {
   const ready = runtime.state === "ready" || runtime.state === "complete"
   const danger = runtime.state === "error" || runtime.state === "unavailable"
   return (
@@ -1151,7 +1166,11 @@ function FundedRuntimeDisclosure({ runtime }: { runtime: FundedRuntimeState }) {
   )
 }
 
-function RuntimeDisclosure({ status }: { status: ImmortalRuntimeStatus }) {
+export function RuntimeDisclosure({
+  status,
+}: {
+  status: ImmortalRuntimeStatus
+}) {
   const label = {
     loading: "Engine loading",
     incompatible: "Engine incompatible",
