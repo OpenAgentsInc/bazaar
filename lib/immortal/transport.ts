@@ -5,6 +5,7 @@ import {
   validatePublicHead,
   wrapPrivateRecordCopies,
   finalizeEvent,
+  parseJsonRejectingDuplicateMembers,
   verifyEvent,
   type DeliveredPrivateRecord,
   type Event,
@@ -28,9 +29,11 @@ import type {
 } from "./store"
 import { bytesToHex, hexToBytes } from "./store"
 import type { ImmortalContractIdentity } from "./config"
+import type { PublicRegtestRelay } from "./public-config"
 
 const RELAY_TIMEOUT_MS = 10_000
 const MAXIMUM_RELAY_MESSAGE_BYTES = 1_048_576
+const MAXIMUM_NIP11_BYTES = 65_536
 const PRIVATE_PROFILE_SUPPORT = [
   {
     id: "mkt-swp",
@@ -63,6 +66,54 @@ export interface ImmortalRelayCallbacks {
   readonly onPublicEvent: (event: Event) => Promise<void>
   readonly onPrivateEvent: (event: Event) => Promise<void>
   readonly onDisconnect?: (reason: string) => void
+}
+
+export interface ConnectedRelay {
+  readonly transport: ImmortalRelayTransport
+  readonly information: RelayInformation
+  readonly relay: PublicRegtestRelay
+}
+
+export async function connectImmortalRelayPool(
+  relays: readonly PublicRegtestRelay[],
+  identity: DemoIdentity,
+  callbacks: ImmortalRelayCallbacks,
+  previousRelayUrl?: string
+): Promise<ConnectedRelay> {
+  if (relays.length < 1 || relays.length > 2) {
+    throw new ImmortalRelayError(
+      "relay_unavailable",
+      "The signed relay pool must contain one or two entries."
+    )
+  }
+  const previousIndex = previousRelayUrl
+    ? relays.findIndex((relay) => relay.websocketUrl === previousRelayUrl)
+    : -1
+  const ordered = relays.map(
+    (_, offset) =>
+      relays[(Math.max(previousIndex, -1) + 1 + offset) % relays.length]!
+  )
+  let lastError: unknown
+  for (const relay of ordered) {
+    const transport = new ImmortalRelayTransport(
+      relay.websocketUrl,
+      identity,
+      relay.contractIdentity
+    )
+    try {
+      const information = await transport.connect(callbacks)
+      return { transport, information, relay }
+    } catch (cause) {
+      lastError = cause
+      transport.close()
+    }
+  }
+  throw lastError instanceof ImmortalRelayError
+    ? lastError
+    : new ImmortalRelayError(
+        "relay_unavailable",
+        "Every signed public relay is unavailable."
+      )
 }
 
 export class ImmortalRelayError extends Error {
@@ -636,19 +687,43 @@ async function fetchRelayInformation(
   }
   if (
     !response.ok ||
-    !response.headers.get("content-type")?.includes("application/nostr+json")
+    !response.headers.get("content-type")?.includes("application/nostr+json") ||
+    Number(response.headers.get("content-length") ?? 0) > MAXIMUM_NIP11_BYTES
   ) {
     throw new ImmortalRelayError(
       "nip11_unavailable",
       "The relay did not return a valid NIP-11 response."
     )
   }
-  const value = (await response.json()) as Record<string, unknown>
+  const bytes = await readBoundedResponse(response, MAXIMUM_NIP11_BYTES)
+  if (bytes.byteLength < 2 || bytes.byteLength > MAXIMUM_NIP11_BYTES) {
+    throw new ImmortalRelayError(
+      "nip11_unavailable",
+      "The relay NIP-11 document exceeded its byte bound."
+    )
+  }
+  let value: Record<string, unknown>
+  try {
+    const parsed = parseJsonRejectingDuplicateMembers(
+      new TextDecoder("utf-8", { fatal: true }).decode(bytes)
+    )
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      throw new Error("NIP-11 is not an object")
+    }
+    value = parsed as Record<string, unknown>
+  } catch {
+    throw new ImmortalRelayError(
+      "nip11_unavailable",
+      "The relay NIP-11 document is malformed."
+    )
+  }
   if (
     value.software !== "https://github.com/OpenAgentsInc/immortal" ||
     value.version !== contractIdentity.crateVersion ||
     !Array.isArray(value.supported_nips) ||
-    !value.supported_nips.includes(42) ||
+    ![11, 42, 59].every((nip) =>
+      (value.supported_nips as unknown[]).includes(nip)
+    ) ||
     !Array.isArray(value.supported_extensions) ||
     !value.supported_extensions.includes("nip-mkt")
   ) {
@@ -663,6 +738,45 @@ async function fetchRelayInformation(
     supportedNips: value.supported_nips as number[],
     supportedExtensions: value.supported_extensions as string[],
   }
+}
+
+async function readBoundedResponse(
+  response: Response,
+  maximumBytes: number
+): Promise<Uint8Array> {
+  if (!response.body) {
+    throw new ImmortalRelayError(
+      "nip11_unavailable",
+      "The relay NIP-11 document has no body."
+    )
+  }
+  const reader = response.body.getReader()
+  const chunks: Uint8Array[] = []
+  let length = 0
+  try {
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
+      length += value.byteLength
+      if (length > maximumBytes) {
+        await reader.cancel()
+        throw new ImmortalRelayError(
+          "nip11_unavailable",
+          "The relay NIP-11 document exceeded its byte bound."
+        )
+      }
+      chunks.push(value)
+    }
+  } finally {
+    reader.releaseLock()
+  }
+  const bytes = new Uint8Array(length)
+  let offset = 0
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset)
+    offset += chunk.byteLength
+  }
+  return bytes
 }
 
 function isEvent(value: unknown): value is Event {

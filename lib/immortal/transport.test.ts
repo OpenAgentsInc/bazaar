@@ -17,7 +17,9 @@ import {
   requesterRfq,
 } from "@/vendor/mkt-swp/immortal-browser-abi"
 import { IMMORTAL_ARTIFACT, type ImmortalContractIdentity } from "./config"
+import { PUBLIC_REGTEST_RELAY_CONTRACT_SHA256 } from "./public-config"
 import {
+  connectImmortalRelayPool,
   ImmortalRelayError,
   ImmortalRelayTransport,
   signImmortalRequest,
@@ -172,6 +174,68 @@ test("contract identity mismatch refuses the relay before opening a socket", asy
       cause instanceof ImmortalRelayError &&
       cause.code === "contract_identity_mismatch"
   )
+})
+
+test("signed relay pool fails over deterministically and republishes snapshots", async (t) => {
+  const refused = createServer((_, response) => {
+    response.writeHead(503).end()
+  })
+  await new Promise<void>((resolve) => refused.listen(0, "127.0.0.1", resolve))
+  t.after(() => refused.close())
+
+  const live = createServer((request, response) => {
+    response.writeHead(200, { "content-type": "application/nostr+json" })
+    response.end(
+      JSON.stringify({
+        software: "https://github.com/OpenAgentsInc/immortal",
+        version: CONTRACT.crateVersion,
+        supported_nips: [11, 42, 59],
+        supported_extensions: ["nip-mkt"],
+      })
+    )
+  })
+  const sockets = new WebSocketServer({ server: live })
+  sockets.on("connection", (socket) => {
+    socket.send(JSON.stringify(["AUTH", "pool-challenge"]))
+    socket.on("message", (data) => {
+      const message = JSON.parse(data.toString()) as unknown[]
+      if (message[0] === "AUTH") {
+        const event = message[1] as Event
+        socket.send(JSON.stringify(["OK", event.id, true, "authenticated"]))
+      } else if (message[0] === "REQ") {
+        socket.send(JSON.stringify(["EOSE", message[1]]))
+      }
+    })
+  })
+  await new Promise<void>((resolve) => live.listen(0, "127.0.0.1", resolve))
+  t.after(() => {
+    sockets.close()
+    live.close()
+  })
+  Object.defineProperty(globalThis, "WebSocket", {
+    value: NodeWebSocket,
+    configurable: true,
+  })
+  const refusedAddress = refused.address()
+  const liveAddress = live.address()
+  assert.ok(refusedAddress && typeof refusedAddress === "object")
+  assert.ok(liveAddress && typeof liveAddress === "object")
+  const relays = [refusedAddress.port, liveAddress.port].map((port) => ({
+    websocketUrl: `ws://127.0.0.1:${port}`,
+    contractSha256: PUBLIC_REGTEST_RELAY_CONTRACT_SHA256,
+    contractIdentity: CONTRACT,
+  }))
+  let snapshots = 0
+  const connected = await connectImmortalRelayPool(relays, identity(), {
+    onSnapshot: async () => {
+      snapshots += 1
+    },
+    onPublicEvent: async () => undefined,
+    onPrivateEvent: async () => undefined,
+  })
+  t.after(() => connected.transport.close())
+  assert.equal(connected.relay.websocketUrl, relays[1]!.websocketUrl)
+  assert.equal(snapshots, 1)
 })
 
 test("both NIP-59 copies recover the same engine-validated signed RFQ", async () => {
