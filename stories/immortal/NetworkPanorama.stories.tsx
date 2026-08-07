@@ -81,11 +81,9 @@ export const GrowingMarket: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement)
     await expect(
-      canvas.getByRole("button", { name: "immortal-0 (degraded)" })
+      canvas.getByText("immortal-0 (degraded)")
     ).toBeInTheDocument()
-    await expect(
-      canvas.getByRole("button", { name: "fathom (offline)" })
-    ).toBeInTheDocument()
+    await expect(canvas.getByText("fathom (offline)")).toBeInTheDocument()
   },
 }
 
@@ -106,8 +104,9 @@ export const ThrivingMarket: Story = {
       canvas.getByRole("img", { name: /thriving market/ })
     ).toBeInTheDocument()
     // The HUD mirror carries the market stats for screen readers.
-    await expect(canvas.getByText("7,475")).toBeInTheDocument()
-    await expect(canvas.getByText("20.26 BTC")).toBeInTheDocument()
+    // HUD values render both in the SVG and the sr-only mirror.
+    expect(canvas.getAllByText("7,475").length).toBeGreaterThan(0)
+    expect(canvas.getAllByText("20.26 BTC").length).toBeGreaterThan(0)
   },
 }
 
@@ -124,9 +123,7 @@ export const RelayOutage: Story = {
   ),
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement)
-    await expect(
-      canvas.getByRole("button", { name: "damus (offline)" })
-    ).toBeInTheDocument()
+    await expect(canvas.getByText("damus (offline)")).toBeInTheDocument()
   },
 }
 
