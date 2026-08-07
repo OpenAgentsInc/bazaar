@@ -6,6 +6,21 @@ import {
   parseImmortalDemoRequestContract,
   selectImmortalDemoRequestTemplate,
 } from "./request-contract"
+import type { ValidatedRegtestDestination } from "./destination"
+
+const destination: ValidatedRegtestDestination = {
+  schema: "openagents.bazaar.regtest-destination.v1",
+  parserPackage: "@openagentsinc/mkt-swp-destination",
+  parserRevision: "1cc29d4318",
+  parserVersion: 1,
+  swapType: "reverse",
+  kind: "bitcoin_address",
+  canonicalValue: "bcrt1ptest",
+  commitmentSha256: "99".repeat(32),
+  amountSat: null,
+  paymentHash: null,
+  expiresAt: null,
+}
 
 const fixturePath = new URL(
   "../../tests/fixtures/no-spend-manifest.json",
@@ -43,7 +58,7 @@ test("parses the closed public no-spend request contract", async () => {
   ])
 })
 
-test("selects only an exact route and amount template", async () => {
+test("selects a route template while the live Offering controls amount", async () => {
   const contract = parseImmortalDemoRequestContract(await fixtureContract())
   const reverse = contract.templates[1]
   const selected = selectImmortalDemoRequestTemplate(
@@ -57,25 +72,26 @@ test("selects only an exact route and amount template", async () => {
       inputAssetId: reverse.inputAssetId,
       outputAssetId: reverse.outputAssetId,
       inputAmount: "1000",
+      destination,
     }
   )
   assert.equal(selected, reverse)
-  assert.throws(
-    () =>
-      selectImmortalDemoRequestTemplate(
-        contract,
-        {
-          swapType: "reverse",
-          inputAsset: { id: reverse.inputAssetId },
-          outputAsset: { id: reverse.outputAssetId },
-        },
-        {
-          inputAssetId: reverse.inputAssetId,
-          outputAssetId: reverse.outputAssetId,
-          inputAmount: "1001",
-        }
-      ),
-    /no unique no-spend request template/
+  assert.equal(
+    selectImmortalDemoRequestTemplate(
+      contract,
+      {
+        swapType: "reverse",
+        inputAsset: { id: reverse.inputAssetId },
+        outputAsset: { id: reverse.outputAssetId },
+      },
+      {
+        inputAssetId: reverse.inputAssetId,
+        outputAssetId: reverse.outputAssetId,
+        inputAmount: "1001",
+        destination,
+      }
+    ),
+    reverse
   )
 })
 

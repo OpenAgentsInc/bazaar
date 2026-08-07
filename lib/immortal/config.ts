@@ -1,11 +1,11 @@
 export const IMMORTAL_ARTIFACT = {
   schema: "openagents.bazaar.immortal-browser-artifact.v1",
-  sourceRevision: "69a78231ffeae5a78fe45de9aba122db00178953",
+  sourceRevision: "1fb8f30d218c4e8e7d0e29dc4cd2e8d4900d60a8",
   requesterApiSha256:
     "bf52fda5f4d349fbbe195e4cff58af59a3930e1ee8ab1f1413b6338ba44fb3a8",
   wasmSha256:
-    "7cd00d973892ed90348c1101447c05a8194c3258a3bb5e6fd92dd0fc62130505",
-  wasmBytes: 3_736_659,
+    "84cc47132dad5339e785f364833f9fe05eee742400f580dfce4a4f260f87c910",
+  wasmBytes: 3_738_371,
   wasmUrl: "/immortal/immortal_client_web.wasm",
 } as const
 

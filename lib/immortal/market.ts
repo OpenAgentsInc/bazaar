@@ -5,6 +5,10 @@ import {
 
 import type { ImmortalRequesterSessionView } from "@/vendor/mkt-swp/immortal-browser-abi"
 import type { ImmortalDemoConfig } from "./config"
+import {
+  destinationRequestKey,
+  type ValidatedRegtestDestination,
+} from "./destination"
 
 const DECIMAL = /^(0|[1-9][0-9]*)$/
 const MAIN_REGTEST_CHAIN =
@@ -66,6 +70,7 @@ export interface QuoteRequestInput {
   readonly inputAssetId: string
   readonly outputAssetId: string
   readonly inputAmount: string
+  readonly destination: ValidatedRegtestDestination
 }
 
 export interface QuoteRequestContext extends QuoteRequestInput {
@@ -95,6 +100,7 @@ export interface ValidatedQuote {
   readonly inputAssetId: string
   readonly outputAssetId: string
   readonly inputAmount: string
+  readonly destination: ValidatedRegtestDestination
   readonly outputAmount: string
   readonly providerFee: string
   readonly minerFeeBudget: string
@@ -262,6 +268,10 @@ export function eligibleRoutes(
   )
 }
 
+export function quoteRequestKey(input: QuoteRequestInput): string {
+  return `${input.inputAssetId}\n${input.outputAssetId}\n${input.inputAmount}\n${destinationRequestKey(input.destination)}`
+}
+
 export function validateQuoteView(
   view: ImmortalRequesterSessionView,
   quoteEvent: Event,
@@ -357,6 +367,7 @@ export function validateQuoteView(
     inputAssetId: quote.input_asset_id,
     outputAssetId: quote.output_asset_id,
     inputAmount: quote.input_amount,
+    destination: context.destination,
     outputAmount: quote.output_amount,
     providerFee: quote.fees.provider_fee,
     minerFeeBudget: quote.fees.miner_fee_budget,

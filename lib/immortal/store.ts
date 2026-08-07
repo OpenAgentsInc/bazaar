@@ -4,6 +4,7 @@ import type {
   ImmortalSessionDeliveryInput,
   ImmortalSignedRecordDelivery,
 } from "@/vendor/mkt-swp/immortal-browser-abi"
+import type { ValidatedRegtestDestination } from "./destination"
 
 const DATABASE_NAME = "openagents-bazaar-immortal"
 const DATABASE_VERSION = 1
@@ -110,6 +111,10 @@ export interface StoredImmortalSession {
   readonly providerPubkey: string
   readonly relayUrl: string
   readonly selectedProviderRoute: ProviderRoute
+  readonly dynamicInput?: {
+    readonly inputAmount: string
+    readonly destination: ValidatedRegtestDestination
+  } | null
   readonly signedRecords: readonly StoredSignedRecord[]
   readonly validatedDeliveries: readonly StoredValidatedDelivery[]
   readonly engineSnapshotJsonHex: string
@@ -781,6 +786,7 @@ function validateSession(session: StoredImmortalSession): void {
   validateHex32(session.requesterPubkey, "requester public key")
   validateHex32(session.providerPubkey, "provider public key")
   validateRoute(session.selectedProviderRoute)
+  validateDynamicInput(session.dynamicInput)
   if (
     session.providerPubkey !== session.selectedProviderRoute.providerPubkey ||
     session.relayUrl !== session.selectedProviderRoute.relayUrl
@@ -850,6 +856,33 @@ function validateSession(session: StoredImmortalSession): void {
   }
   for (const effect of session.effects)
     validateHex32(effect.effectId, "effect ID")
+}
+
+function validateDynamicInput(
+  input: StoredImmortalSession["dynamicInput"]
+): void {
+  if (input == null) return
+  if (!/^[1-9][0-9]*$/.test(input.inputAmount)) {
+    throw new ImmortalStoreError(
+      "session_invalid",
+      "The dynamic input amount is not canonical."
+    )
+  }
+  const destination = input.destination
+  if (
+    destination.schema !== "openagents.bazaar.regtest-destination.v1" ||
+    destination.parserPackage !== "@openagentsinc/mkt-swp-destination" ||
+    destination.parserRevision !== "1cc29d4318" ||
+    destination.parserVersion !== 1 ||
+    !/^[0-9a-f]{64}$/.test(destination.commitmentSha256) ||
+    destination.canonicalValue.length === 0 ||
+    destination.canonicalValue.length > 7_090
+  ) {
+    throw new ImmortalStoreError(
+      "session_invalid",
+      "The persisted destination binding is invalid."
+    )
+  }
 }
 
 function validateIdentity(identity: DemoIdentity): void {

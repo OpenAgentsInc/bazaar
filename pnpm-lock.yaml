@@ -11,12 +11,18 @@ importers:
       '@base-ui/react':
         specifier: ^1.7.0
         version: 1.7.0(@date-fns/tz@1.5.0)(@types/react@19.2.18)(date-fns@4.4.0)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
+      '@noble/hashes':
+        specifier: 1.7.1
+        version: 1.7.1
       '@openagentsinc/design-tokens':
         specifier: github:OpenAgentsInc/openagents#fb24df3d7c793bf99a1a36553ad8cfded4c61eb0&path:packages/design-tokens
         version: https://codeload.github.com/OpenAgentsInc/openagents/tar.gz/fb24df3d7c793bf99a1a36553ad8cfded4c61eb0#path:packages/design-tokens
       '@openagentsinc/nip-mkt':
         specifier: workspace:*
         version: link:vendor/nip-mkt
+      '@scure/base':
+        specifier: 1.2.4
+        version: 1.2.4
       '@shadcn/react':
         specifier: ^0.3.0
         version: 0.3.0(@types/react@19.2.18)(react@19.2.4)

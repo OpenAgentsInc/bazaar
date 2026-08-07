@@ -61,18 +61,22 @@ import {
   DEMO_LIFECYCLE_STAGES,
   type DemoLifecycleState,
 } from "@/lib/immortal/lifecycle"
+import {
+  validateRegtestDestination,
+  type DynamicSwapType,
+} from "@/lib/immortal/destination"
 
 const assetUi = {
   LN: {
     label: "Lightning",
     symbol: "LN",
-    destination: "Paste a Lightning invoice, BOLT12 or LNURL to receive funds",
+    destination: "Enter a regtest BOLT11 invoice to receive Lightning",
     iconSrc: "/boltz/lightning-icon.svg",
   },
   BTC: {
     label: "Bitcoin",
     symbol: "BTC",
-    destination: "Enter BTC address to receive funds",
+    destination: "Enter a bcrt1 address to receive Bitcoin",
     iconSrc: "/boltz/bitcoin-icon.svg",
   },
   LBTC: {
@@ -300,6 +304,24 @@ export function SwapPage({
     [market, sendTicker]
   )
   const amountState = validateAmount(sendAmount, direction)
+  const swapType: DynamicSwapType | null =
+    sendTicker === "LN" && receiveTicker === "BTC"
+      ? "reverse"
+      : sendTicker === "BTC" && receiveTicker === "LN"
+        ? "submarine"
+        : null
+  const destinationState = useMemo(
+    () =>
+      swapType
+        ? validateRegtestDestination(destination, swapType)
+        : {
+            ok: false as const,
+            code: "unsupported" as const,
+            message:
+              "This swap direction is not available in the regtest demo.",
+          },
+    [destination, swapType]
+  )
   const selectedQuote = quotes.state === "ready" ? quotes.selected : null
   const receiveAmount = selectedQuote?.outputAmount ?? ""
   const destinationLabel = assetUi[receiveTicker].destination
@@ -311,7 +333,8 @@ export function SwapPage({
     if (
       status.state !== "live" ||
       !direction?.actionable ||
-      !amountState.valid
+      !amountState.valid ||
+      !destinationState.ok
     ) {
       resetQuotes()
       return
@@ -321,11 +344,13 @@ export function SwapPage({
         inputAssetId: direction.inputAsset.id,
         outputAssetId: direction.outputAsset.id,
         inputAmount: sendAmount,
+        destination: destinationState.destination,
       })
     }, 450)
     return () => clearTimeout(timer)
   }, [
     amountState.valid,
+    destinationState,
     direction,
     requestQuotes,
     resetQuotes,
@@ -371,7 +396,7 @@ export function SwapPage({
   }
 
   const quoteReady = Boolean(selectedQuote && amountState.valid)
-  const canCreate = quoteReady && destination.trim().length > 0
+  const canCreate = quoteReady && destinationState.ok
   const sessionActive = lifecycle.state !== "idle"
 
   function submitDemo() {
@@ -497,10 +522,37 @@ export function SwapPage({
                 autoComplete="off"
                 value={destination}
                 disabled={sessionActive}
-                onChange={(event) => setDestination(event.target.value)}
+                onChange={(event) => {
+                  setDestination(event.target.value)
+                  resetQuotes()
+                }}
                 placeholder={destinationLabel}
+                aria-invalid={destination.length > 0 && !destinationState.ok}
+                aria-describedby="destination-validation"
+                spellCheck={false}
                 className="h-[2.625rem] rounded-xl border-border bg-secondary text-center text-sm placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-ring/25"
               />
+              <p
+                id="destination-validation"
+                role={
+                  destination.length > 0 && !destinationState.ok
+                    ? "alert"
+                    : undefined
+                }
+                className={`mt-1.5 min-h-4 text-center text-[0.6875rem] ${
+                  destination.length > 0 && !destinationState.ok
+                    ? "text-destructive"
+                    : "text-muted-foreground"
+                }`}
+              >
+                {destination.length === 0
+                  ? receiveTicker === "BTC"
+                    ? "bcrt1 only · BOLT12, LNURL, and Liquid unavailable"
+                    : "Amount-bearing lnbcrt BOLT11 only · BOLT12 and LNURL unavailable"
+                  : destinationState.ok
+                    ? `${destinationState.destination.kind === "bitcoin_address" ? "Regtest address" : "Regtest BOLT11 invoice"} verified locally`
+                    : destinationState.message}
+              </p>
 
               <Separator className="my-4 bg-foreground/10" />
 

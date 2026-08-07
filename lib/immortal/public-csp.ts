@@ -28,8 +28,12 @@ export function buildPublicRegtestCsp(
   const connectSources = [...new Set(configuredSources)].join(" ")
   return [
     "default-src 'self'",
-    `script-src 'self' 'nonce-${nonce}' 'strict-dynamic' 'wasm-unsafe-eval'${development ? " 'unsafe-eval'" : ""}`,
-    `style-src 'self' 'nonce-${nonce}'${development ? " 'unsafe-inline'" : ""}`,
+    development
+      ? "script-src 'self' 'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval'"
+      : `script-src 'self' 'nonce-${nonce}' 'strict-dynamic' 'wasm-unsafe-eval'`,
+    development
+      ? "style-src 'self' 'unsafe-inline'"
+      : `style-src 'self' 'nonce-${nonce}'`,
     "img-src 'self' blob: data:",
     "font-src 'self'",
     `connect-src ${connectSources}`,

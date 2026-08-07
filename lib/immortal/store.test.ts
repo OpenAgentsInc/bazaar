@@ -11,6 +11,7 @@ import {
   type StoredSignedRecord,
   type StoredValidatedDelivery,
 } from "./store"
+import { validateRegtestDestination } from "./destination"
 
 const SESSION_ID = "11".repeat(32)
 const REQUESTER = "22".repeat(32)
@@ -74,6 +75,7 @@ async function createStore() {
     providerPubkey: PROVIDER,
     relayUrl: ROUTE.relayUrl,
     selectedProviderRoute: ROUTE,
+    dynamicInput: null,
     engineSnapshotJsonHex: "",
     engineView: null,
   })
@@ -253,4 +255,35 @@ test("session persistence refuses custody or settlement secrets", async () => {
       cause instanceof ImmortalStoreError &&
       cause.code === "secret_material_refused"
   )
+})
+
+test("reload preserves the exact canonical destination and parser version", async () => {
+  const parsed = validateRegtestDestination(
+    "bcrt1pvcpgfdxvvnklep6kdyewn80pphta54nwwrex3ahrvh2uh0e9dgwsalmcu5",
+    "reverse",
+    0
+  )
+  assert.equal(parsed.ok, true)
+  if (!parsed.ok) return
+  const kv = new MemoryStringKv()
+  const store = new ImmortalSessionStore(kv, () => 1_700_000_000_000)
+  await store.create({
+    sessionId: SESSION_ID,
+    requesterPubkey: REQUESTER,
+    providerPubkey: PROVIDER,
+    relayUrl: ROUTE.relayUrl,
+    selectedProviderRoute: ROUTE,
+    dynamicInput: {
+      inputAmount: "150000",
+      destination: parsed.destination,
+    },
+    engineSnapshotJsonHex: "",
+    engineView: null,
+  })
+
+  const restored = await new ImmortalSessionStore(kv).get(SESSION_ID)
+  assert.deepEqual(restored.dynamicInput, {
+    inputAmount: "150000",
+    destination: parsed.destination,
+  })
 })

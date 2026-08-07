@@ -92,6 +92,7 @@ function completeSession(
       offeringCoordinate: `39601:${provider}:demo`,
       relayUrl: "ws://127.0.0.1:18084",
     },
+    dynamicInput: null,
     signedRecords: events.map(storedRecord),
     validatedDeliveries: [],
     engineSnapshotJsonHex: "00",

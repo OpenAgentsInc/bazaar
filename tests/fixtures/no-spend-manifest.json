@@ -1,6 +1,6 @@
 {
   "schema": "openagents.immortal.no-spend-demo-manifest.v2",
-  "source_revision": "69a78231ffeae5a78fe45de9aba122db00178953",
+  "source_revision": "1fb8f30d218c4e8e7d0e29dc4cd2e8d4900d60a8",
   "network": "regtest",
   "mode": "no_spend",
   "relay": {

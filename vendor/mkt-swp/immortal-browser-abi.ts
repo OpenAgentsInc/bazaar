@@ -5,7 +5,7 @@ export const IMMORTAL_BROWSER_ABI_VERSION = 1 as const
 export const IMMORTAL_BROWSER_ABI_SCHEMA =
   "openagents.immortal.mkt-swp.browser-abi.v1" as const
 export const IMMORTAL_BROWSER_SOURCE_REVISION =
-  "69a78231ffeae5a78fe45de9aba122db00178953" as const
+  "1fb8f30d218c4e8e7d0e29dc4cd2e8d4900d60a8" as const
 export const IMMORTAL_REQUESTER_API_SHA256 =
   "bf52fda5f4d349fbbe195e4cff58af59a3930e1ee8ab1f1413b6338ba44fb3a8" as const
 export const IMMORTAL_BROWSER_MAX_REQUEST_BYTES = 2 * 1024 * 1024

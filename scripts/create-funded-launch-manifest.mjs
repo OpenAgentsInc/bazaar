@@ -8,11 +8,11 @@ const NETWORK = "bip122:0f9188f13cb7b2c9e5c72a6b65eeada4"
 const CONTRACT_SCHEMA = "openagents.immortal.browser-demo-contract.v1"
 const CONTRACT_SHA256 =
   "1edc8f07b859832dd95f11fbed9831ebfd53bc11cf8d8d5156509556c023856d"
-const SOURCE_REVISION = "69a78231ffeae5a78fe45de9aba122db00178953"
+const SOURCE_REVISION = "1fb8f30d218c4e8e7d0e29dc4cd2e8d4900d60a8"
 const REQUESTER_API_SHA256 =
   "bf52fda5f4d349fbbe195e4cff58af59a3930e1ee8ab1f1413b6338ba44fb3a8"
 const WASM_SHA256 =
-  "7cd00d973892ed90348c1101447c05a8194c3258a3bb5e6fd92dd0fc62130505"
+  "84cc47132dad5339e785f364833f9fe05eee742400f580dfce4a4f260f87c910"
 
 export async function writeFundedLaunchManifest({
   output,

@@ -20,7 +20,7 @@ export async function proxy(request: NextRequest) {
     if (noSpend.state === "ready") {
       localSources.push(
         noSpend.config.relay.websocketUrl,
-        noSpend.config.relay.healthUrl
+        new URL(noSpend.config.relay.healthUrl).origin
       )
     }
     if (funded.state === "ready") {

@@ -105,13 +105,17 @@ none can advance the primary action.
 ## Pinned inputs
 
 The WASM artifact is built from Immortal revision
-`69a78231ffeae5a78fe45de9aba122db00178953`. Its byte length, SHA-256,
+`1fb8f30d218c4e8e7d0e29dc4cd2e8d4900d60a8`. Its byte length, SHA-256,
 zero-import authority, ABI version, exported functions, requester API digest,
 and source revision are checked by `pnpm verify:immortal-artifact` and again in
 the browser before instantiation. The committed artifact is built with Rust
 1.95.0 through `scripts/build-immortal-artifact.sh`; the script remaps source,
 toolchain, and registry paths so local workstation paths do not enter the
 public binary.
+
+Dynamic destination and amount rules, parser provenance, and the signed
+input-to-effect binding are documented in
+[`dynamic-regtest-inputs.md`](dynamic-regtest-inputs.md).
 
 The framework-neutral TypeScript boundary is based on OpenAgents commit
 `9843df74c3577a8ba1a326692ec69011bf1d0931` and compatibility-updated for the

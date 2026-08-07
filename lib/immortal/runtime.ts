@@ -49,6 +49,7 @@ import {
   IDLE_QUOTES,
   eligibleRoutes,
   foldMarketHeads,
+  quoteRequestKey,
   selectBestQuote,
   validateQuoteView,
   type ImmortalMarketSnapshot,
@@ -58,6 +59,7 @@ import {
   type QuoteState,
   type ValidatedQuote,
 } from "./market"
+import { assertDestinationMatchesQuote } from "./destination"
 import { selectImmortalDemoRequestTemplate } from "./request-contract"
 import {
   IDLE_LIFECYCLE,
@@ -800,6 +802,10 @@ export class ImmortalBrowserRuntime {
         offeringCoordinate: route.offeringCoordinate,
         relayUrl: this.config.relay.websocketUrl,
       },
+      dynamicInput: {
+        inputAmount: input.inputAmount,
+        destination: input.destination,
+      },
       engineSnapshotJsonHex: "",
       engineView: null,
     })
@@ -848,6 +854,7 @@ export class ImmortalBrowserRuntime {
       context,
       Math.floor(Date.now() / 1_000)
     )
+    assertDestinationMatchesQuote(context.destination, quote.outputAmount)
     this.quoteCandidates.set(quote.quoteId, quote)
     const requestedProviderCount =
       this.quoteState.state === "requesting" ||
@@ -1307,24 +1314,33 @@ function createRfqProfile(
   template: ImmortalDemoConfig["requestContract"]["templates"][number],
   now: number
 ): Record<string, unknown> {
+  const constraints: Record<string, unknown> = {
+    allowed_script_modes: route.scriptModes,
+    asset_pair: [input.inputAssetId, input.outputAssetId],
+    confirmation_policy: route.confirmationPolicy,
+    desired_completion_time: now + 600,
+    destination_commitment_sha256: input.destination.commitmentSha256,
+    firm_quote_required: true,
+    input_amount: input.inputAmount,
+    maximum_total_fee: input.inputAmount,
+    payment_hash: input.destination.paymentHash ?? template.paymentHash,
+    requester_public_keys: template.requesterPublicKeys.map((key) => ({
+      leg_id: key.legId,
+      path: key.path,
+      public_key: key.publicKey,
+    })),
+    swap_type: route.swapType,
+  }
+  if (route.swapType === "submarine") {
+    constraints.invoice_sha256 = input.destination.commitmentSha256
+  }
   return {
     constraints: {
-      allowed_script_modes: route.scriptModes,
-      asset_pair: [input.inputAssetId, input.outputAssetId],
-      confirmation_policy: route.confirmationPolicy,
-      desired_completion_time: now + 600,
-      firm_quote_required: true,
-      input_amount: input.inputAmount,
-      invoice_sha256: template.invoiceSha256,
-      maximum_total_fee: input.inputAmount,
-      payment_hash: template.paymentHash,
-      requester_public_keys: template.requesterPublicKeys.map((key) => ({
-        leg_id: key.legId,
-        path: key.path,
-        public_key: key.publicKey,
-      })),
-      swap_type: route.swapType,
+      ...constraints,
     },
+    ...(input.destination.kind === "bolt11_invoice"
+      ? { invoice: input.destination.canonicalValue }
+      : {}),
   }
 }
 
@@ -1451,10 +1467,6 @@ function sessionWithDelivery(
       ? session.validatedDeliveries
       : [...session.validatedDeliveries, delivery],
   }
-}
-
-function quoteRequestKey(input: QuoteRequestInput): string {
-  return `${input.inputAssetId}\n${input.outputAssetId}\n${input.inputAmount}`
 }
 
 function quoteStateKey(state: QuoteState): string | null {

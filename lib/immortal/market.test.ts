@@ -7,18 +7,33 @@ import type { ImmortalDemoConfig } from "./config"
 import {
   eligibleRoutes,
   foldMarketHeads,
+  quoteRequestKey,
   selectBestQuote,
   validateQuoteView,
   type QuoteRequestContext,
   type ValidatedQuote,
 } from "./market"
 import type { ImmortalRequesterSessionView } from "@/vendor/mkt-swp/immortal-browser-abi"
+import type { ValidatedRegtestDestination } from "./destination"
 
 const providerA = "11".repeat(32)
 const providerB = "22".repeat(32)
 const chain = "swp:1:bip122:00000000000000000000000000000000:btc:chain"
 const lightning = "swp:1:bip122:00000000000000000000000000000000:btc:lightning"
 const otherChain = "swp:1:bip122:11111111111111111111111111111111:btc:chain"
+const destination: ValidatedRegtestDestination = {
+  schema: "openagents.bazaar.regtest-destination.v1",
+  parserPackage: "@openagentsinc/mkt-swp-destination",
+  parserRevision: "1cc29d4318",
+  parserVersion: 1,
+  swapType: "reverse",
+  kind: "bitcoin_address",
+  canonicalValue: "bcrt1ptest",
+  commitmentSha256: "99".repeat(32),
+  amountSat: null,
+  paymentHash: null,
+  expiresAt: null,
+}
 
 const config = {
   providers: [
@@ -61,6 +76,7 @@ test("live replaceable heads expose only jointly offered engine rails", () => {
       inputAssetId: lightning,
       outputAssetId: chain,
       inputAmount: "1000",
+      destination,
     }).length,
     2
   )
@@ -134,6 +150,26 @@ test("best Quote selection is deterministic and uses atomic-unit BigInt", () => 
   assert.equal(
     selectBestQuote([base, huge], 1_700_000_000)?.outputAmount,
     huge.outputAmount
+  )
+})
+
+test("amount or destination commitment changes invalidate a quote request", () => {
+  const base = {
+    inputAssetId: lightning,
+    outputAssetId: chain,
+    inputAmount: "1000",
+    destination,
+  }
+  assert.notEqual(
+    quoteRequestKey(base),
+    quoteRequestKey({ ...base, inputAmount: "1001" })
+  )
+  assert.notEqual(
+    quoteRequestKey(base),
+    quoteRequestKey({
+      ...base,
+      destination: { ...destination, commitmentSha256: "98".repeat(32) },
+    })
   )
 })
 
@@ -248,6 +284,7 @@ function quoteContext(pubkey: string): QuoteRequestContext {
     inputAssetId: lightning,
     outputAssetId: chain,
     inputAmount: "1000",
+    destination,
     expiresAt: 1_700_000_600,
   }
 }
@@ -342,6 +379,7 @@ function validated(
     inputAssetId: lightning,
     outputAssetId: chain,
     inputAmount: "1000",
+    destination,
     outputAmount,
     providerFee: "10",
     minerFeeBudget: "100",

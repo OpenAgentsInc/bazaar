@@ -58,8 +58,7 @@ export function selectImmortalDemoRequestTemplate(
       template.inputAssetId === route.inputAsset.id &&
       template.outputAssetId === route.outputAsset.id &&
       template.inputAssetId === input.inputAssetId &&
-      template.outputAssetId === input.outputAssetId &&
-      template.inputAmount === input.inputAmount
+      template.outputAssetId === input.outputAssetId
   )
   if (matches.length !== 1) {
     fail("no unique no-spend request template matches this route and amount")
