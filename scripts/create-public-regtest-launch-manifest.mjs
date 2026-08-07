@@ -86,9 +86,9 @@ export async function createPublicRegtestLaunchManifest({
       signing_pubkey: GATEWAY_SIGNER,
       contract_schema: "openagents.immortal.public-regtest-gateway-contract.v1",
       contract_sha256:
-        "3f54404a874ecc99caaadf929d85ce0a372d9f3cb978656b9fe5be4c6b88ca93",
+        "374b864ab0e8a4449200dacbe8f1c174396cedc1edbcd384c5421a0ee1f92b4d",
       service_contract_sha256:
-        "d8bff6d86bf04f5b050e5ec7f646f5482932f9f66824121e7c6888642d787431",
+        "d1aa5cd171b9ba8247f5d93cdabcc762f82ac1aa15529c0ce7a6e148fed15637",
     },
     relays: [
       relay("wss://relay-a.34-41-78-122.nip.io"),

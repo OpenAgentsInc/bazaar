@@ -178,6 +178,8 @@ For rollback, restore the previous compatible Vercel deployment together with
 its exact manifest, Bazaar revision, Immortal revision, and WASM pins. Never pair
 an old app with a new manifest. Verify `/readyz`, CSP, and both relays before
 promoting. Revision or contract drift fails closed before funding.
+The pinned gateway and service digests include the bounded public faucet and
+join-kit queue contract from Immortal's public onboarding milestone.
 
 Run the external release gate from a machine outside the service network:
 
