@@ -1,0 +1,35 @@
+{
+  "name": "@openagentsinc/immortal-mcp",
+  "version": "0.1.0",
+  "description": "MCP stdio server for the Immortal public regtest network: inspect the network, spin up and fund a node, request listing. Regtest only; never holds provider seeds; cannot alter or sign the launch manifest.",
+  "type": "module",
+  "private": false,
+  "license": "CC0-1.0",
+  "bin": {
+    "immortal-mcp": "dist/index.js"
+  },
+  "main": "dist/index.js",
+  "files": [
+    "dist",
+    "src",
+    "README.md"
+  ],
+  "scripts": {
+    "dev": "tsx src/index.ts",
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "conformance": "tsx scripts/conformance.ts"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.30.0",
+    "@openagentsinc/nip-mkt": "workspace:*",
+    "ws": "8.21.2",
+    "zod": "^3.25.76"
+  },
+  "devDependencies": {
+    "@types/node": "^20",
+    "@types/ws": "8.18.1",
+    "tsx": "4.23.10",
+    "typescript": "^5"
+  }
+}

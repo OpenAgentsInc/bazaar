@@ -1,5 +1,6 @@
 packages:
   - vendor/*
+  - packages/*
 
 catalog:
   effect: 4.0.0-beta.94
