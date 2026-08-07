@@ -103,9 +103,9 @@ async function completeJourney(page: Page, direction: "reverse" | "submarine") {
   await expect(createSwap).toBeEnabled({ timeout: 90_000 })
   await page.getByRole("button", { name: /2 providers.*Fees/ }).click()
   await expect(page.locator("[data-quote-provider]")).toHaveCount(2)
-  await expect(page.locator("[data-quote-provider][data-selected]")).toHaveCount(
-    1
-  )
+  await expect(
+    page.locator("[data-quote-provider][data-selected]")
+  ).toHaveCount(1)
   await createSwap.click()
 
   await expect(page.locator("[data-public-regtest-state]")).not.toHaveAttribute(
@@ -113,13 +113,25 @@ async function completeJourney(page: Page, direction: "reverse" | "submarine") {
     "ready"
   )
   await page.reload({ waitUntil: "domcontentloaded" })
-  await expect(page.locator("[data-public-regtest-state]")).toHaveAttribute(
-    "data-public-regtest-state",
-    "complete",
-    {
-      timeout: 8 * 60_000,
-    }
+  const action = page.locator("[data-public-regtest-state]")
+  await page.waitForFunction(
+    () => {
+      const state = document
+        .querySelector("[data-public-regtest-state]")
+        ?.getAttribute("data-public-regtest-state")
+      return state === "complete" || state === "error"
+    },
+    undefined,
+    { timeout: 8 * 60_000 }
   )
+  const terminalState = await action.getAttribute("data-public-regtest-state")
+  if (terminalState === "error") {
+    const detail = await page
+      .getByRole("region", { name: "Public funded regtest session" })
+      .textContent()
+    throw new Error(`public regtest journey failed: ${detail ?? "unknown"}`)
+  }
+  expect(terminalState).toBe("complete")
   await expect(page.getByText("BTC + LN verified")).toBeVisible()
   await expect(page.getByText(/loser released/)).toBeVisible()
   const provider = await page.getByText(/Selected provider ·/).textContent()
