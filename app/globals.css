@@ -1,6 +1,7 @@
 @import "tailwindcss";
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
+@import "@openagentsinc/design-tokens/web.css";
 
 @custom-variant dark (&:is(.dark *));
 
@@ -22,6 +23,14 @@
   --color-chart-3: var(--chart-3);
   --color-chart-2: var(--chart-2);
   --color-chart-1: var(--chart-1);
+  --color-highlight-foreground: var(--highlight-foreground);
+  --color-highlight: var(--highlight);
+  --color-asset-liquid-foreground: var(--asset-liquid-foreground);
+  --color-asset-liquid: var(--asset-liquid);
+  --color-asset-bitcoin-foreground: var(--asset-bitcoin-foreground);
+  --color-asset-bitcoin: var(--asset-bitcoin);
+  --color-asset-lightning-foreground: var(--asset-lightning-foreground);
+  --color-asset-lightning: var(--asset-lightning);
   --color-ring: var(--ring);
   --color-input: var(--input);
   --color-border: var(--border);
@@ -50,72 +59,64 @@
 }
 
 :root {
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.141 0.005 285.823);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.141 0.005 285.823);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.141 0.005 285.823);
-  --primary: oklch(0.488 0.243 264.376);
-  --primary-foreground: oklch(0.97 0.014 254.604);
-  --secondary: oklch(0.967 0.001 286.375);
-  --secondary-foreground: oklch(0.21 0.006 285.885);
-  --muted: oklch(0.967 0.001 286.375);
-  --muted-foreground: oklch(0.552 0.016 285.938);
-  --accent: oklch(0.967 0.001 286.375);
-  --accent-foreground: oklch(0.21 0.006 285.885);
-  --destructive: oklch(0.577 0.245 27.325);
-  --border: oklch(0.92 0.004 286.32);
-  --input: oklch(0.92 0.004 286.32);
-  --ring: oklch(0.705 0.015 286.067);
-  --chart-1: oklch(0.871 0.006 286.286);
-  --chart-2: oklch(0.552 0.016 285.938);
-  --chart-3: oklch(0.442 0.017 285.786);
-  --chart-4: oklch(0.37 0.013 285.805);
-  --chart-5: oklch(0.274 0.006 286.033);
-  --radius: 0.45rem;
-  --sidebar: oklch(0.985 0 0);
-  --sidebar-foreground: oklch(0.141 0.005 285.823);
-  --sidebar-primary: oklch(0.546 0.245 262.881);
-  --sidebar-primary-foreground: oklch(0.97 0.014 254.604);
-  --sidebar-accent: oklch(0.967 0.001 286.375);
-  --sidebar-accent-foreground: oklch(0.21 0.006 285.885);
-  --sidebar-border: oklch(0.92 0.004 286.32);
-  --sidebar-ring: oklch(0.705 0.015 286.067);
-}
+  /* Aiur compatibility aliases; values live in the shared token package. */
+  --aiur-editor: var(--oa-color-background);
+  --aiur-surface: var(--oa-color-surface);
+  --aiur-elevated: var(--oa-color-surface-raised);
+  --aiur-border: var(--oa-color-border);
+  --aiur-border-selected: var(--oa-color-border-strong);
+  --aiur-selected: var(--oa-color-state-selected);
+  --aiur-text: var(--oa-color-text-primary);
+  --aiur-muted: var(--oa-color-text-muted);
+  --aiur-blue: var(--oa-color-accent);
+  --aiur-blue-bright: var(--oa-color-accent-hover);
+  --aiur-focus: var(--oa-color-focus);
+  --aiur-red: var(--oa-color-attention-failed);
+  --aiur-green: var(--oa-color-attention-done);
+  --aiur-cyan: var(--oa-color-attention-working);
+  --aiur-purple: var(--oa-color-attention-input);
+  --aiur-orange: var(--oa-color-syntax-number);
 
-.dark {
-  --background: oklch(0.2597 0.047 252.21);
-  --foreground: oklch(0.897 0.0112 243.67);
-  --card: oklch(0.2344 0.0396 251.19);
-  --card-foreground: oklch(0.897 0.0112 243.67);
-  --popover: oklch(0.197 0.0356 253.05);
-  --popover-foreground: oklch(0.897 0.0112 243.67);
-  --primary: oklch(0.842 0.1643 97.96);
-  --primary-foreground: oklch(0.197 0.0356 253.05);
-  --secondary: oklch(0.304 0.043 251.5);
-  --secondary-foreground: oklch(0.897 0.0112 243.67);
-  --muted: oklch(0.197 0.0356 253.05);
-  --muted-foreground: oklch(0.706 0.018 246);
-  --accent: oklch(0.304 0.043 251.5);
-  --accent-foreground: oklch(0.897 0.0112 243.67);
-  --destructive: oklch(0.704 0.191 22.216);
-  --border: oklch(0.897 0.0112 243.67 / 15%);
-  --input: oklch(0.197 0.0356 253.05);
-  --ring: oklch(0.842 0.1643 97.96);
-  --chart-1: oklch(0.871 0.006 286.286);
-  --chart-2: oklch(0.552 0.016 285.938);
-  --chart-3: oklch(0.442 0.017 285.786);
-  --chart-4: oklch(0.37 0.013 285.805);
-  --chart-5: oklch(0.274 0.006 286.033);
-  --sidebar: oklch(0.21 0.006 285.885);
-  --sidebar-foreground: oklch(0.985 0 0);
-  --sidebar-primary: oklch(0.623 0.214 259.815);
-  --sidebar-primary-foreground: oklch(0.97 0.014 254.604);
-  --sidebar-accent: oklch(0.274 0.006 286.033);
-  --sidebar-accent-foreground: oklch(0.985 0 0);
-  --sidebar-border: oklch(1 0 0 / 10%);
-  --sidebar-ring: oklch(0.552 0.016 285.938);
+  --background: #090615;
+  --foreground: var(--aiur-text);
+  --card: var(--aiur-elevated);
+  --card-foreground: var(--aiur-text);
+  --popover: var(--oa-color-surface-overlay);
+  --popover-foreground: var(--aiur-text);
+  --primary: var(--aiur-blue);
+  --primary-foreground: var(--oa-color-text-inverse);
+  --secondary: var(--aiur-surface);
+  --secondary-foreground: var(--aiur-text);
+  --muted: var(--aiur-elevated);
+  --muted-foreground: var(--aiur-muted);
+  --accent: var(--aiur-selected);
+  --accent-foreground: var(--aiur-text);
+  --destructive: var(--aiur-red);
+  --border: var(--aiur-border);
+  --input: var(--aiur-border-selected);
+  --ring: var(--aiur-focus);
+  --highlight: var(--aiur-blue-bright);
+  --highlight-foreground: var(--oa-color-text-inverse);
+  --asset-lightning: oklch(0.842 0.1643 97.96);
+  --asset-lightning-foreground: oklch(0.197 0.0356 253.05);
+  --asset-bitcoin: oklch(0.7523 0.1663 62.59);
+  --asset-bitcoin-foreground: oklch(1 0 0);
+  --asset-liquid: oklch(0.638 0.122 222);
+  --asset-liquid-foreground: oklch(1 0 0);
+  --chart-1: var(--aiur-blue);
+  --chart-2: var(--aiur-cyan);
+  --chart-3: var(--aiur-purple);
+  --chart-4: var(--aiur-orange);
+  --chart-5: var(--aiur-green);
+  --radius: 0.45rem;
+  --sidebar: var(--aiur-surface);
+  --sidebar-foreground: var(--aiur-text);
+  --sidebar-primary: var(--aiur-blue);
+  --sidebar-primary-foreground: var(--oa-color-text-inverse);
+  --sidebar-accent: var(--aiur-selected);
+  --sidebar-accent-foreground: var(--aiur-text);
+  --sidebar-border: var(--aiur-border);
+  --sidebar-ring: var(--aiur-focus);
 }
 
 @layer base {
@@ -123,13 +124,13 @@
     @apply border-border outline-ring/50;
   }
   body {
-    @apply bg-background text-foreground;
+    @apply h-full overflow-hidden overscroll-none bg-background text-foreground;
   }
   button:not(:disabled),
   [role="button"]:not(:disabled) {
     cursor: pointer;
   }
   html {
-    @apply font-sans;
+    @apply h-full overflow-hidden overscroll-none font-sans;
   }
 }

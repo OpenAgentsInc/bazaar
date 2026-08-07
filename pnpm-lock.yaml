@@ -11,6 +11,9 @@ importers:
       '@base-ui/react':
         specifier: ^1.7.0
         version: 1.7.0(@date-fns/tz@1.5.0)(@types/react@19.2.18)(date-fns@4.4.0)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
+      '@openagentsinc/design-tokens':
+        specifier: github:OpenAgentsInc/openagents#fb24df3d7c793bf99a1a36553ad8cfded4c61eb0&path:packages/design-tokens
+        version: https://codeload.github.com/OpenAgentsInc/openagents/tar.gz/fb24df3d7c793bf99a1a36553ad8cfded4c61eb0#path:packages/design-tokens
       '@openagentsinc/nip-mkt':
         specifier: workspace:*
         version: link:vendor/nip-mkt
@@ -855,6 +858,10 @@ packages:
   '@nolyfill/is-core-module@1.0.39':
     resolution: {integrity: sha512-nn5ozdjYQpUCZlWGuxcJY/KpxkWQs4DcbMCmKojjyrYDEAGy4Ce19NN4v5MduafTwJlbKc99UA8YhSVqq9yPZA==}
     engines: {node: '>=12.4.0'}
+
+  '@openagentsinc/design-tokens@https://codeload.github.com/OpenAgentsInc/openagents/tar.gz/fb24df3d7c793bf99a1a36553ad8cfded4c61eb0#path:packages/design-tokens':
+    resolution: {gitHosted: true, path: packages/design-tokens, tarball: https://codeload.github.com/OpenAgentsInc/openagents/tar.gz/fb24df3d7c793bf99a1a36553ad8cfded4c61eb0}
+    version: 0.2.0
 
   '@playwright/test@1.62.1':
     resolution: {integrity: sha512-DTcUc8qii+cpHvtOwggMtBRMjKZHXYWdw8syRYu2vtzuq4Wxphqq4NfCs5Zt44L6mA8rfDfj+PHnxFc/FeK6mQ==}
@@ -4434,6 +4441,10 @@ snapshots:
       fastq: 1.20.1
 
   '@nolyfill/is-core-module@1.0.39': {}
+
+  '@openagentsinc/design-tokens@https://codeload.github.com/OpenAgentsInc/openagents/tar.gz/fb24df3d7c793bf99a1a36553ad8cfded4c61eb0#path:packages/design-tokens':
+    dependencies:
+      effect: 4.0.0-beta.94
 
   '@playwright/test@1.62.1':
     dependencies:

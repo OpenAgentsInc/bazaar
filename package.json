@@ -19,6 +19,7 @@
   },
   "dependencies": {
     "@base-ui/react": "^1.7.0",
+    "@openagentsinc/design-tokens": "github:OpenAgentsInc/openagents#fb24df3d7c793bf99a1a36553ad8cfded4c61eb0&path:packages/design-tokens",
     "@openagentsinc/nip-mkt": "workspace:*",
     "@shadcn/react": "^0.3.0",
     "class-variance-authority": "^0.7.1",
