@@ -35,6 +35,8 @@ const PRIVATE_PROFILE_SUPPORT = [
   {
     id: "mkt-swp",
     version: 1,
+    privateKinds: [39_610],
+    referenceMarkers: ["cancel-request", "cancel-accept"],
     criticalMembers: ["mkt_swp"],
     understoodMembers: ["mkt_swp"],
   },
@@ -96,6 +98,7 @@ export class ImmortalRelayTransport {
   private readyPromise: Promise<void> = Promise.resolve()
   private callbacks: ImmortalRelayCallbacks | null = null
   private closedIntentionally = false
+  private eventQueue: Promise<void> = Promise.resolve()
 
   constructor(
     readonly relayUrl: string,
@@ -106,6 +109,7 @@ export class ImmortalRelayTransport {
   async connect(callbacks: ImmortalRelayCallbacks): Promise<RelayInformation> {
     this.callbacks = callbacks
     this.closedIntentionally = false
+    this.eventQueue = Promise.resolve()
     this.setState("connecting")
     const information = await fetchRelayInformation(
       this.relayUrl,
@@ -332,8 +336,11 @@ export class ImmortalRelayTransport {
       subscription.events.push(value)
       return
     }
-    if (value.kind === 1_059) await this.callbacks?.onPrivateEvent(value)
-    else await this.callbacks?.onPublicEvent(value)
+    this.eventQueue = this.eventQueue.then(async () => {
+      if (value.kind === 1_059) await this.callbacks?.onPrivateEvent(value)
+      else await this.callbacks?.onPublicEvent(value)
+    })
+    await this.eventQueue
   }
 
   private async handleEose(message: unknown[]): Promise<void> {
@@ -355,7 +362,10 @@ export class ImmortalRelayTransport {
         else publicEvents.push(event)
       }
     }
-    await this.callbacks?.onSnapshot({ publicEvents, privateEvents })
+    this.eventQueue = this.eventQueue.then(async () => {
+      await this.callbacks?.onSnapshot({ publicEvents, privateEvents })
+    })
+    await this.eventQueue
     this.setState("live")
     this.readyResolve?.()
   }
@@ -461,10 +471,12 @@ export async function validatePrivateDelivery(
         }
       )
     )
-  } catch {
+  } catch (cause) {
     throw new ImmortalRelayError(
       "private_delivery_invalid",
-      "A private relay record failed NIP-59 or NIP-MKT validation."
+      cause instanceof Error
+        ? `A private relay record failed NIP-59 or NIP-MKT validation: ${cause.message}`
+        : "A private relay record failed NIP-59 or NIP-MKT validation."
     )
   }
   const engineInput: ImmortalSessionDeliveryInput = {

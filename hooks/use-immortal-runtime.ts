@@ -8,6 +8,10 @@ import type {
   ImmortalRuntimeStatus,
 } from "@/lib/immortal/config"
 import type { ImmortalBrowserRuntime } from "@/lib/immortal/runtime"
+import {
+  IDLE_LIFECYCLE,
+  type DemoLifecycleState,
+} from "@/lib/immortal/lifecycle"
 import type {
   ImmortalMarketSnapshot,
   QuoteRequestInput,
@@ -40,6 +44,7 @@ export function useImmortalRuntime(config: ImmortalConfigResult) {
     state: "idle",
     detail: "Enter an offered amount to request signed quotes.",
   })
+  const [lifecycle, setLifecycle] = useState<DemoLifecycleState>(IDLE_LIFECYCLE)
 
   useEffect(() => {
     let disposed = false
@@ -58,6 +63,7 @@ export function useImmortalRuntime(config: ImmortalConfigResult) {
           onProvenance: setProvenance,
           onMarket: setMarket,
           onQuotes: setQuotes,
+          onLifecycle: setLifecycle,
         })
         runtimeRef.current = runtime
         return runtime.start(config)
@@ -89,13 +95,29 @@ export function useImmortalRuntime(config: ImmortalConfigResult) {
     runtimeRef.current?.resetQuotes()
   }, [])
 
+  const startDemo = useCallback((sessionId: string) => {
+    return runtimeRef.current?.startDemo(sessionId) ?? Promise.resolve()
+  }, [])
+
+  const retryDemo = useCallback(() => {
+    runtimeRef.current?.retryDemo()
+  }, [])
+
+  const runAnotherDemo = useCallback(() => {
+    runtimeRef.current?.runAnotherDemo()
+  }, [])
+
   return {
     status,
     provenance,
     market,
     quotes,
+    lifecycle,
     requestQuotes,
     resetQuotes,
+    startDemo,
+    retryDemo,
+    runAnotherDemo,
     runtimeRef,
   }
 }

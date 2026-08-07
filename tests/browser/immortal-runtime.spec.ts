@@ -1,4 +1,6 @@
 import { expect, test } from "@playwright/test"
+import { readFile, writeFile } from "node:fs/promises"
+import { dirname, join } from "node:path"
 
 test("browser loads pinned engine and connects directly to the authenticated relay", async ({
   page,
@@ -66,4 +68,100 @@ test("real topology returns two engine-verified signed Quotes", async ({
 
   await page.getByLabel("Bitcoin address").fill("bcrt1qimmortaldemoonly")
   await expect(page.getByRole("button", { name: "Create Swap" })).toBeEnabled()
+})
+
+test("real topology completes and restores the exact no-spend lifecycle", async ({
+  page,
+}) => {
+  const manifest = process.env.IMMORTAL_DEMO_MANIFEST
+  test.skip(!manifest, "requires scripts/dev-no-spend-demo.sh from Immortal")
+
+  await page.goto("/")
+  await expect(page.getByText("Min 1,000 · Max 1,000 sats")).toBeVisible({
+    timeout: 30_000,
+  })
+  await page.getByLabel("Send", { exact: true }).fill("1000")
+  await expect(
+    page.getByText("2 signed Quotes verified · best route selected")
+  ).toBeVisible({ timeout: 30_000 })
+  await page.getByLabel("Bitcoin address").fill("bcrt1qimmortaldemoonly")
+  await page.getByRole("button", { name: "Create Swap" }).click()
+
+  await expect(
+    page.locator(
+      '[data-lifecycle-milestone="reservation_recorded"][data-complete="true"]'
+    )
+  ).toBeVisible({ timeout: 30_000 })
+  const providerRole = await page
+    .locator("[data-provider-role]")
+    .getAttribute("data-provider-role")
+  expect(providerRole).toMatch(/^provider-[ab]$/)
+  const manifestBeforeRestart = JSON.parse(
+    await readFile(manifest!, "utf8")
+  ) as {
+    providers: {
+      role: string
+      health: { state: string; restart_count: number }
+    }[]
+  }
+  const previousRestartCount = manifestBeforeRestart.providers.find(
+    (candidate) => candidate.role === providerRole
+  )?.health.restart_count
+  expect(previousRestartCount).toBeGreaterThanOrEqual(0)
+  await writeFile(
+    join(dirname(manifest!), "control", `restart-${providerRole}`),
+    ""
+  )
+  await expect
+    .poll(
+      async () => {
+        const document = JSON.parse(await readFile(manifest!, "utf8")) as {
+          providers: {
+            role: string
+            health: { state: string; restart_count: number }
+          }[]
+        }
+        const provider = document.providers.find(
+          (candidate) => candidate.role === providerRole
+        )
+        return `${provider?.health.state}:${provider?.health.restart_count}`
+      },
+      { timeout: 30_000 }
+    )
+    .toBe(`ready:${(previousRestartCount ?? 0) + 1}`)
+
+  for (const stage of [
+    "reservation_recorded",
+    "contracts_signed",
+    "verification_passed",
+    "cancellation_effective",
+  ]) {
+    await expect(
+      page.locator(
+        `[data-lifecycle-milestone="${stage}"][data-complete="true"]`
+      )
+    ).toBeVisible({ timeout: 30_000 })
+    await page.reload()
+  }
+
+  await expect(page.locator('[data-lifecycle-state="complete"]')).toBeVisible({
+    timeout: 30_000,
+  })
+  await expect(
+    page.getByText("Demo complete — reservation released, 0 sats moved.")
+  ).toBeVisible()
+  await expect(
+    page.locator('[data-lifecycle-milestone][data-complete="true"]')
+  ).toHaveCount(8)
+  await expect(
+    page.getByRole("button", { name: "Run another demo" })
+  ).toBeEnabled()
+
+  await page.reload()
+  await expect(page.locator('[data-lifecycle-state="complete"]')).toBeVisible({
+    timeout: 30_000,
+  })
+  await expect(
+    page.locator('[data-lifecycle-milestone][data-complete="true"]')
+  ).toHaveCount(8)
 })

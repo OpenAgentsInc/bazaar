@@ -309,40 +309,24 @@ export class ImmortalSessionStore {
     signedRecord: StoredSignedRecord,
     delivery: StoredValidatedDelivery
   ): Promise<StoredImmortalSession> {
-    return this.update(sessionId, (session) => {
-      const existingRecord = session.signedRecords.find(
-        (candidate) => candidate.id === signedRecord.id
-      )
-      if (existingRecord && !sameSignedRecord(existingRecord, signedRecord)) {
-        throw new ImmortalStoreError(
-          "signed_record_conflict",
-          "A signed event ID was replayed with different bytes."
-        )
-      }
-      const existingDelivery = session.validatedDeliveries.find(
-        (candidate) =>
-          candidate.eventId === delivery.eventId &&
-          candidate.wrapId === delivery.wrapId
-      )
-      if (
-        existingDelivery &&
-        canonicalJson(existingDelivery) !== canonicalJson(delivery)
-      ) {
-        throw new ImmortalStoreError(
-          "signed_record_conflict",
-          "A validated delivery was replayed with different provenance."
-        )
-      }
-      return {
-        ...session,
-        signedRecords: existingRecord
-          ? session.signedRecords
-          : [...session.signedRecords, signedRecord],
-        validatedDeliveries: existingDelivery
-          ? session.validatedDeliveries
-          : [...session.validatedDeliveries, delivery],
-      }
-    })
+    return this.update(sessionId, (session) =>
+      appendValidatedDelivery(session, signedRecord, delivery)
+    )
+  }
+
+  async commitDeliveryAndEngineSnapshot(
+    sessionId: string,
+    signedRecord: StoredSignedRecord,
+    delivery: StoredValidatedDelivery,
+    snapshotJsonHex: string,
+    engineView: unknown
+  ): Promise<StoredImmortalSession> {
+    validateEngineSnapshot(snapshotJsonHex)
+    return this.update(sessionId, (session) => ({
+      ...appendValidatedDelivery(session, signedRecord, delivery),
+      engineSnapshotJsonHex: snapshotJsonHex,
+      engineView,
+    }))
   }
 
   async saveEngineSnapshot(
@@ -350,15 +334,7 @@ export class ImmortalSessionStore {
     snapshotJsonHex: string,
     engineView: unknown
   ): Promise<StoredImmortalSession> {
-    if (
-      !LOWER_EVEN_HEX.test(snapshotJsonHex) ||
-      snapshotJsonHex.length > 4_194_304
-    ) {
-      throw new ImmortalStoreError(
-        "session_invalid",
-        "The engine snapshot is not bounded lowercase hexadecimal bytes."
-      )
-    }
+    validateEngineSnapshot(snapshotJsonHex)
     return this.update(sessionId, (session) => ({
       ...session,
       engineSnapshotJsonHex: snapshotJsonHex,
@@ -597,6 +573,57 @@ function sameSignedRecord(
   )
 }
 
+function appendValidatedDelivery(
+  session: StoredImmortalSession,
+  signedRecord: StoredSignedRecord,
+  delivery: StoredValidatedDelivery
+): StoredImmortalSession {
+  const existingRecord = session.signedRecords.find(
+    (candidate) => candidate.id === signedRecord.id
+  )
+  if (existingRecord && !sameSignedRecord(existingRecord, signedRecord)) {
+    throw new ImmortalStoreError(
+      "signed_record_conflict",
+      "A signed event ID was replayed with different bytes."
+    )
+  }
+  const existingDelivery = session.validatedDeliveries.find(
+    (candidate) =>
+      candidate.eventId === delivery.eventId &&
+      candidate.wrapId === delivery.wrapId
+  )
+  if (
+    existingDelivery &&
+    !sameValidatedDeliveryReplay(existingDelivery, delivery)
+  ) {
+    throw new ImmortalStoreError(
+      "signed_record_conflict",
+      "A validated delivery was replayed with different provenance."
+    )
+  }
+  return {
+    ...session,
+    signedRecords: existingRecord
+      ? session.signedRecords
+      : [...session.signedRecords, signedRecord],
+    validatedDeliveries: existingDelivery
+      ? session.validatedDeliveries
+      : [...session.validatedDeliveries, delivery],
+  }
+}
+
+function validateEngineSnapshot(snapshotJsonHex: string): void {
+  if (
+    !LOWER_EVEN_HEX.test(snapshotJsonHex) ||
+    snapshotJsonHex.length > 4_194_304
+  ) {
+    throw new ImmortalStoreError(
+      "session_invalid",
+      "The engine snapshot is not bounded lowercase hexadecimal bytes."
+    )
+  }
+}
+
 function compareEngineDeliveryEvidence(
   left: StoredValidatedDelivery,
   right: StoredValidatedDelivery
@@ -678,6 +705,36 @@ export async function digestJson(value: unknown): Promise<string> {
   return bytesToHex(
     new Uint8Array(await crypto.subtle.digest("SHA-256", bytes))
   )
+}
+
+function sameValidatedDeliveryReplay(
+  left: StoredValidatedDelivery,
+  right: StoredValidatedDelivery
+): boolean {
+  const stable = (delivery: StoredValidatedDelivery) => {
+    return {
+      eventId: delivery.eventId,
+      wrapId: delivery.wrapId,
+      rawWrapEvent: delivery.rawWrapEvent,
+      sealId: delivery.sealId,
+      rumorId: delivery.rumorId,
+      senderPubkey: delivery.senderPubkey,
+      source: delivery.source,
+      engineInput: {
+        raw_signed_event_hex: delivery.engineInput.raw_signed_event_hex,
+        provenance: delivery.engineInput.provenance,
+      },
+      engineDelivery: {
+        event_id: delivery.engineDelivery.event_id,
+        raw_signed_event: delivery.engineDelivery.raw_signed_event,
+        raw_wrap_event: delivery.engineDelivery.raw_wrap_event,
+        wrap_event_id: delivery.engineDelivery.wrap_event_id,
+        sender_pubkey: delivery.engineDelivery.sender_pubkey,
+        provenance: delivery.engineDelivery.provenance,
+      },
+    }
+  }
+  return canonicalJson(stable(left)) === canonicalJson(stable(right))
 }
 
 function canonicalize(value: unknown): unknown {

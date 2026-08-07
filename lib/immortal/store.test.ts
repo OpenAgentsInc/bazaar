@@ -109,6 +109,40 @@ test("concurrent duplicate delivery is persisted once and restores exactly", asy
   assert.equal(afterReload.validatedDeliveries.length, 1)
 })
 
+test("record evidence and its validated engine snapshot commit together", async () => {
+  const { kv, store } = await createStore()
+  const committed = await store.commitDeliveryAndEngineSnapshot(
+    SESSION_ID,
+    record(),
+    delivery(),
+    "7b7d",
+    { state: "quote_verified" }
+  )
+  const restored = await new ImmortalSessionStore(kv).get(SESSION_ID)
+
+  assert.equal(committed.signedRecords.length, 1)
+  assert.equal(committed.validatedDeliveries.length, 1)
+  assert.equal(committed.engineSnapshotJsonHex, "7b7d")
+  assert.deepEqual(restored, committed)
+})
+
+test("snapshot replay retains the first observation of identical wrap bytes", async () => {
+  const { store } = await createStore()
+  await store.appendDelivery(SESSION_ID, record(), delivery())
+  const replayed = await store.appendDelivery(
+    SESSION_ID,
+    record(),
+    delivery(1_700_000_100)
+  )
+
+  assert.equal(replayed.validatedDeliveries.length, 1)
+  assert.equal(replayed.validatedDeliveries[0]?.receivedAt, 1_700_000_001)
+  assert.equal(
+    replayed.validatedDeliveries[0]?.engineInput.observed_at,
+    1_700_000_001
+  )
+})
+
 test("same signed ID or delivery provenance with changed bytes fails closed", async () => {
   const { store } = await createStore()
   await store.appendDelivery(SESSION_ID, record(), delivery())
@@ -120,7 +154,10 @@ test("same signed ID or delivery provenance with changed bytes fails closed", as
       cause.code === "signed_record_conflict"
   )
   await assert.rejects(
-    store.appendDelivery(SESSION_ID, record(), delivery(1_700_000_002)),
+    store.appendDelivery(SESSION_ID, record(), {
+      ...delivery(),
+      rawWrapEvent: '{"kind":1059,"changed":true}',
+    }),
     (cause) =>
       cause instanceof ImmortalStoreError &&
       cause.code === "signed_record_conflict"

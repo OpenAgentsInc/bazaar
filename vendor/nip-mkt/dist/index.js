@@ -5618,13 +5618,13 @@ function requireCounterparty(event, role) {
   const matches = tagsNamed(event, "p").filter((tag) => tag[3] === role);
   if (matches.length !== 1) fail("tag_grammar", `expected exactly one ${role} counterparty`);
 }
-function validateReferenceTags(event) {
+function validateReferenceTags(event, extensionMarkers = /* @__PURE__ */ new Set()) {
   const references = event.tags.filter((tag) => tag[0] === "e");
   if (references.length > MKT_LIMITS.causal_or_evidence_references) {
     fail("collection_limit", "too many causal or evidence references");
   }
   for (const tag of references) {
-    if (tag.length !== 4 || !EVENT_MARKERS.has(tag[3]))
+    if (tag.length !== 4 || !EVENT_MARKERS.has(tag[3]) && !extensionMarkers.has(tag[3]))
       fail("invalid_reference", "invalid event reference");
     if (!HEX_642.test(tag[1])) fail("invalid_reference", "event reference ID is invalid");
   }
@@ -5637,7 +5637,7 @@ function validateReferenceTags(event) {
     requireReferenceIdentifier(match[2], "offering id");
   }
 }
-function validateCommonBounds(event) {
+function validateCommonBounds(event, extensionMarkers = /* @__PURE__ */ new Set()) {
   if (event.tags.length > MKT_LIMITS.tags) fail("collection_limit", "too many tags");
   if (tagsNamed(event, "p").length > MKT_LIMITS.counterparties)
     fail("collection_limit", "too many counterparties");
@@ -5648,7 +5648,7 @@ function validateCommonBounds(event) {
   );
   if (hints.length > MKT_LIMITS.relay_or_endpoint_hints)
     fail("collection_limit", "too many relay hints");
-  validateReferenceTags(event);
+  validateReferenceTags(event, extensionMarkers);
 }
 function validatePublicTags(event) {
   const identifier = exactlyOne(event, "d");
@@ -5938,12 +5938,14 @@ function validateRawPrivateRecordBase(raw, validateKindTags = true) {
   const event = decodeNostrEvent(raw);
   return validateDecodedPrivateRecord(raw, event, validateKindTags);
 }
-function validateDecodedPrivateRecord(raw, event, validateKindTags) {
-  if (!PRIVATE_KIND_SET.has(event.kind)) fail("invalid_kind", "event is not a private MKT record");
+function validateDecodedPrivateRecord(raw, event, validateKindTags, extensionKinds = /* @__PURE__ */ new Set(), extensionMarkers = /* @__PURE__ */ new Set()) {
+  const baseKind = PRIVATE_KIND_SET.has(event.kind);
+  if (!baseKind && !extensionKinds.has(event.kind))
+    fail("invalid_kind", "event is not a private MKT record");
   if (!verifyEvent(event))
     fail("invalid_event_signature", "private MKT signature or ID is invalid");
-  validateCommonBounds(event);
-  const common = validatePrivateTags(event, validateKindTags);
+  validateCommonBounds(event, extensionMarkers);
+  const common = validatePrivateTags(event, baseKind && validateKindTags);
   const envelope = decodeContentEnvelope(event.content);
   if (envelope.profile !== common.profile || envelope.profile_version !== common.version || envelope.session_id !== common.session) {
     fail("envelope_mismatch", "content envelope does not match event tags");
@@ -5951,7 +5953,18 @@ function validateDecodedPrivateRecord(raw, event, validateKindTags) {
   return { event, envelope, raw };
 }
 function validateRawPrivateRecord(raw, profiles, validateKindTags = true) {
-  const validated = validateRawPrivateRecordBase(raw, validateKindTags);
+  if (utf8Bytes(raw) > MKT_LIMITS.private_signed_record_bytes)
+    fail("event_too_large", "private signed record is too large");
+  const event = decodeNostrEvent(raw);
+  const extensionKinds = new Set(profiles.flatMap((profile) => profile.privateKinds ?? []));
+  const extensionMarkers = new Set(profiles.flatMap((profile) => profile.referenceMarkers ?? []));
+  const validated = validateDecodedPrivateRecord(
+    raw,
+    event,
+    validateKindTags,
+    extensionKinds,
+    extensionMarkers
+  );
   return validateProfileSupport(validated, profiles);
 }
 function validateProfileSupport(validated, profiles) {
@@ -5998,9 +6011,8 @@ var decodePrivateBase = Effect6.fn("NipMkt.decodePrivateBase")(function* (raw, v
   });
 });
 var decodePrivateWithProfiles = Effect6.fn("NipMkt.decodePrivateWithProfiles")(function* (raw, profiles, validateKindTags = true) {
-  const validated = yield* decodePrivateBase(raw, validateKindTags);
   return yield* Effect6.try({
-    try: () => validateProfileSupport(validated, profiles),
+    try: () => validateRawPrivateRecord(raw, profiles, validateKindTags),
     catch: validationFailure
   });
 });

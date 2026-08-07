@@ -5,6 +5,10 @@ import {
   createRequesterSession,
   ingestRequesterSession,
   loadImmortalBrowserClient,
+  requesterCancel,
+  requesterContract,
+  requesterContractDraft,
+  requesterOrder,
   requesterRfq,
   restoreRequesterSession,
   type ImmortalBrowserClient,
@@ -25,6 +29,8 @@ import {
   loadOrCreateDemoIdentity,
   type DemoIdentity,
   type StoredImmortalSession,
+  type StoredSignedRecord,
+  type StoredValidatedDelivery,
 } from "./store"
 import {
   ImmortalRelayError,
@@ -53,17 +59,37 @@ import {
   type ValidatedQuote,
 } from "./market"
 import { selectImmortalDemoRequestTemplate } from "./request-contract"
+import {
+  IDLE_LIFECYCLE,
+  demoSessionRecords,
+  isStartedDemoSession,
+  parseMktProfile,
+  projectDemoLifecycle,
+  type DemoLifecycleState,
+} from "./lifecycle"
 
 type StatusListener = (status: ImmortalRuntimeStatus) => void
 type ProvenanceListener = (provenance: ImmortalRuntimeProvenance | null) => void
 type MarketListener = (market: ImmortalMarketSnapshot) => void
 type QuoteListener = (quotes: QuoteState) => void
+type LifecycleListener = (lifecycle: DemoLifecycleState) => void
+type ValidatedPrivateDelivery = Awaited<
+  ReturnType<typeof validatePrivateDelivery>
+>
+
+interface LifecyclePublication {
+  readonly session: StoredImmortalSession
+  readonly event: Event
+  readonly advanceDelay: number
+  readonly refreshSnapshot: boolean
+}
 
 export interface ImmortalRuntimeListeners {
   readonly onStatus: StatusListener
   readonly onProvenance: ProvenanceListener
   readonly onMarket: MarketListener
   readonly onQuotes: QuoteListener
+  readonly onLifecycle: LifecycleListener
 }
 
 export class ImmortalBrowserRuntime {
@@ -77,6 +103,7 @@ export class ImmortalBrowserRuntime {
   private reconnectAttempt = 0
   private restoredSessionCount = 0
   private relayInformation: RelayInformation | null = null
+  private relayReady = false
   private readonly publicHeads = new Map<string, Event>()
   private market: ImmortalMarketSnapshot = EMPTY_MARKET
   private quoteState: QuoteState = IDLE_QUOTES
@@ -88,6 +115,11 @@ export class ImmortalBrowserRuntime {
   private quoteTimeout: ReturnType<typeof setTimeout> | null = null
   private quoteExpiryTimer: ReturnType<typeof setTimeout> | null = null
   private lockedSessionId: string | null = null
+  private lifecycleState: DemoLifecycleState = IDLE_LIFECYCLE
+  private lifecycleTimer: ReturnType<typeof setTimeout> | null = null
+  private lifecycleTimeout: ReturnType<typeof setTimeout> | null = null
+  private lifecycleSnapshotRefresh: ReturnType<typeof setTimeout> | null = null
+  private readonly sessionQueues = new Map<string, Promise<void>>()
 
   constructor(private readonly listeners: ImmortalRuntimeListeners) {}
 
@@ -95,6 +127,7 @@ export class ImmortalBrowserRuntime {
     this.stopped = false
     this.listeners.onMarket(EMPTY_MARKET)
     this.listeners.onQuotes(IDLE_QUOTES)
+    this.emitLifecycle(IDLE_LIFECYCLE)
 
     if (configResult.state === "unavailable") {
       this.listeners.onProvenance(null)
@@ -152,11 +185,19 @@ export class ImmortalBrowserRuntime {
     if (this.reconnectTimer) clearTimeout(this.reconnectTimer)
     if (this.quoteTimeout) clearTimeout(this.quoteTimeout)
     if (this.quoteExpiryTimer) clearTimeout(this.quoteExpiryTimer)
+    if (this.lifecycleTimer) clearTimeout(this.lifecycleTimer)
+    if (this.lifecycleTimeout) clearTimeout(this.lifecycleTimeout)
+    if (this.lifecycleSnapshotRefresh)
+      clearTimeout(this.lifecycleSnapshotRefresh)
     this.reconnectTimer = null
     this.quoteTimeout = null
     this.quoteExpiryTimer = null
+    this.lifecycleTimer = null
+    this.lifecycleTimeout = null
+    this.lifecycleSnapshotRefresh = null
     this.transport?.close()
     this.transport = null
+    this.relayReady = false
   }
 
   getClient(): ImmortalBrowserClient {
@@ -212,6 +253,390 @@ export class ImmortalBrowserRuntime {
     }
     this.lockedSessionId = sessionId
     this.clearQuoteTimers()
+  }
+
+  async startDemo(sessionId: string): Promise<void> {
+    if (this.lifecycleState.state === "running") return
+    if (!this.transport || !this.client || !this.store || !this.identity) {
+      throw new Error(
+        "demo_unavailable: the authenticated Immortal runtime is not live"
+      )
+    }
+    try {
+      this.lockQuote(sessionId)
+      const session = await this.store.get(sessionId)
+      this.emitSessionLifecycle(session)
+      await this.advanceLifecycle(sessionId)
+    } catch (cause) {
+      this.emitLifecycleFailure(sessionId, cause)
+    }
+  }
+
+  retryDemo(): void {
+    if (this.lifecycleState.state !== "error") return
+    const sessionId = this.lifecycleState.sessionId
+    if (!sessionId) return
+    void this.getStore()
+      .get(sessionId)
+      .then((session) => {
+        this.emitSessionLifecycle(session)
+        return this.advanceLifecycle(sessionId)
+      })
+      .catch((cause: unknown) => this.emitLifecycleFailure(sessionId, cause))
+  }
+
+  runAnotherDemo(): void {
+    if (this.lifecycleState.state !== "complete") return
+    this.lockedSessionId = null
+    this.emitLifecycle(IDLE_LIFECYCLE)
+    this.resetQuotes()
+  }
+
+  private async advanceLifecycle(sessionId: string): Promise<void> {
+    if (this.stopped || this.lockedSessionId !== sessionId) return
+    if (!this.relayReady) {
+      this.scheduleLifecycleAdvance(sessionId, 500)
+      return
+    }
+    try {
+      const publication = await this.serialSession(sessionId, async () => {
+        if (!this.client || !this.store || !this.identity || !this.transport) {
+          throw new Error(
+            "demo_unavailable: the authenticated Immortal runtime is not live"
+          )
+        }
+        let session = await this.store.get(sessionId)
+        const records = demoSessionRecords(session)
+        if (records.close) {
+          this.emitSessionLifecycle(session)
+          return null
+        }
+
+        if (!records.order) {
+          const request = await Effect.runPromise(
+            requesterOrder(
+              this.client,
+              jsonValue({
+                config: sessionConfig(session),
+                rfq: records.rfq,
+                quote: records.quote,
+                created_at: Math.max(
+                  Math.floor(Date.now() / 1_000),
+                  records.quote.created_at + 1
+                ),
+                observed_at: records.quote.created_at,
+                distinct: await digestJson({
+                  schema: "openagents.bazaar.no-spend-action.v1",
+                  sessionId,
+                  action: "order",
+                }),
+                selection: null,
+              })
+            )
+          )
+          const persisted = await this.persistRequesterRecord(session, request)
+          return {
+            ...persisted,
+            advanceDelay: 300,
+            refreshSnapshot: false,
+          }
+        }
+
+        if (!records.requesterContract) {
+          const quoteProfile = parseMktProfile(records.quote)
+          const terms = record(quoteProfile.terms, "Quote terms")
+          const swapType = stringMember(terms, "swap_type")
+          const draft = await Effect.runPromise(
+            requesterContractDraft(
+              this.client,
+              jsonValue({
+                config: sessionConfig(session),
+                rfq: records.rfq,
+                quote: records.quote,
+                order: records.order,
+                order_observed_at: records.order.created_at,
+                local_inputs: await requesterLocalContractInputs(
+                  swapType,
+                  sessionId
+                ),
+              })
+            )
+          )
+          const request = await Effect.runPromise(
+            requesterContract(
+              this.client,
+              jsonValue({
+                config: sessionConfig(session),
+                rfq: records.rfq,
+                quote: records.quote,
+                order: records.order,
+                order_observed_at: records.order.created_at,
+                created_at: Math.max(
+                  Math.floor(Date.now() / 1_000),
+                  records.order.created_at + 1
+                ),
+                distinct: await digestJson({
+                  schema: "openagents.bazaar.no-spend-action.v1",
+                  sessionId,
+                  action: "requester-contract",
+                }),
+                contract: draft,
+              })
+            )
+          )
+          const persisted = await this.persistRequesterRecord(session, request)
+          return {
+            ...persisted,
+            advanceDelay: 1_000,
+            refreshSnapshot: false,
+          }
+        }
+
+        if (!records.providerContract || !records.providerStatus) {
+          return {
+            session,
+            event: records.requesterContract,
+            advanceDelay: 1_000,
+            refreshSnapshot: true,
+          }
+        }
+
+        if (!records.cancelRequest) {
+          const request = await Effect.runPromise(
+            requesterCancel(
+              this.client,
+              jsonValue({
+                config: sessionConfig(session),
+                created_at: Math.max(
+                  Math.floor(Date.now() / 1_000),
+                  records.providerStatus.created_at + 1
+                ),
+                distinct: await digestJson({
+                  schema: "openagents.bazaar.no-spend-action.v1",
+                  sessionId,
+                  action: "cancel-request",
+                }),
+                order_id: records.order.id,
+                cancellation: {
+                  action: "request",
+                  reason: "bazaar_no_spend_demo",
+                  request_id: null,
+                  accepted_id: null,
+                },
+                mkt_swp: { disposition: "no_funding_authorized" },
+              })
+            )
+          )
+          const persisted = await this.persistRequesterRecord(session, request)
+          return {
+            ...persisted,
+            advanceDelay: 1_000,
+            refreshSnapshot: true,
+          }
+        }
+
+        if (
+          !records.cancelAccepted ||
+          !records.cancelEffective ||
+          !records.close
+        ) {
+          session = await this.store.get(sessionId)
+          return {
+            session,
+            event: records.cancelRequest,
+            advanceDelay: 1_000,
+            refreshSnapshot: true,
+          }
+        }
+
+        return null
+      })
+      if (!publication) return
+      await this.publishRequesterEvent(publication.session, publication.event)
+      this.scheduleLifecycleAdvance(sessionId, publication.advanceDelay)
+      if (publication.refreshSnapshot) {
+        this.scheduleLifecycleSnapshotRefresh(sessionId)
+      }
+    } catch (cause) {
+      this.emitLifecycleFailure(sessionId, cause)
+    }
+  }
+
+  private async persistRequesterRecord(
+    session: StoredImmortalSession,
+    request: Parameters<typeof signImmortalRequest>[1]
+  ): Promise<Pick<LifecyclePublication, "session" | "event">> {
+    if (!this.client || !this.store || !this.identity) {
+      throw new Error("demo_unavailable: the requester runtime stopped")
+    }
+    const event = await signImmortalRequest(this.client, request, this.identity)
+    const local = await validateLocalRequesterDelivery(
+      this.client,
+      event,
+      event.created_at
+    )
+    const candidate = sessionWithDelivery(
+      session,
+      local.signedRecord,
+      local.storedDelivery
+    )
+    if (!candidate.engineSnapshotJsonHex) {
+      throw new Error(
+        "session_snapshot_missing: the selected Quote has no engine snapshot"
+      )
+    }
+    const result = await Effect.runPromise(
+      ingestRequesterSession(
+        this.client,
+        jsonValue({
+          snapshot_json_hex: candidate.engineSnapshotJsonHex,
+          records: [event],
+          deliveries: engineInputsForSession(candidate),
+        })
+      )
+    )
+    const updated = await this.store.commitDeliveryAndEngineSnapshot(
+      session.sessionId,
+      local.signedRecord,
+      local.storedDelivery,
+      result.snapshot_json_hex,
+      result.view
+    )
+    this.emitSessionLifecycle(updated)
+    return { session: updated, event }
+  }
+
+  private async publishRequesterEvent(
+    session: StoredImmortalSession,
+    event: Event
+  ): Promise<void> {
+    if (!this.identity || !this.transport) {
+      throw new Error("relay_unavailable: the direct relay is disconnected")
+    }
+    const copies = await wrapRequesterRecord(
+      event,
+      this.identity,
+      session.providerPubkey
+    )
+    await Promise.all([
+      this.transport.publish(copies.counterparty),
+      this.transport.publish(copies.senderRecovery),
+    ])
+  }
+
+  private scheduleLifecycleAdvance(sessionId: string, delay = 300): void {
+    if (this.lifecycleTimer) return
+    this.lifecycleTimer = setTimeout(() => {
+      this.lifecycleTimer = null
+      void this.advanceLifecycle(sessionId)
+    }, delay)
+  }
+
+  private scheduleLifecycleSnapshotRefresh(sessionId: string): void {
+    if (this.lifecycleSnapshotRefresh) return
+    this.lifecycleSnapshotRefresh = setTimeout(() => {
+      this.lifecycleSnapshotRefresh = null
+      if (
+        this.stopped ||
+        this.lockedSessionId !== sessionId ||
+        this.lifecycleState.state !== "running"
+      ) {
+        return
+      }
+      this.transport?.close()
+      this.transport = null
+      this.relayReady = false
+      void this.connect(1)
+    }, 2_000)
+  }
+
+  private emitSessionLifecycle(session: StoredImmortalSession): void {
+    const next = projectDemoLifecycle(session)
+    const previousStage =
+      this.lifecycleState.state === "running"
+        ? this.lifecycleState.activeStage
+        : null
+    this.emitLifecycle(next)
+    if (next.state === "running" && next.activeStage !== previousStage) {
+      if (this.lifecycleTimeout) clearTimeout(this.lifecycleTimeout)
+      this.lifecycleTimeout = setTimeout(() => {
+        this.lifecycleTimeout = null
+        if (
+          this.lifecycleState.state === "running" &&
+          this.lifecycleState.sessionId === next.sessionId &&
+          this.lifecycleState.activeStage === next.activeStage
+        ) {
+          this.emitLifecycle({
+            state: "error",
+            sessionId: next.sessionId,
+            providerRole: next.providerRole,
+            activeStage: next.activeStage,
+            completedStages: next.completedStages,
+            code: "provider_timeout",
+            detail:
+              "The selected provider did not advance the durable session in time. Retry after it reconnects.",
+            recoverable: true,
+          })
+        }
+      }, 30_000)
+    }
+    if (next.state === "complete" && this.lifecycleTimeout) {
+      clearTimeout(this.lifecycleTimeout)
+      this.lifecycleTimeout = null
+    }
+    if (next.state === "complete" && this.lifecycleSnapshotRefresh) {
+      clearTimeout(this.lifecycleSnapshotRefresh)
+      this.lifecycleSnapshotRefresh = null
+    }
+  }
+
+  private emitLifecycleFailure(sessionId: string, cause: unknown): void {
+    const current = this.lifecycleState
+    this.emitLifecycle({
+      state: "error",
+      sessionId,
+      providerRole:
+        current.state === "running" || current.state === "complete"
+          ? current.providerRole
+          : current.state === "error"
+            ? current.providerRole
+            : null,
+      activeStage:
+        current.state === "running"
+          ? current.activeStage
+          : current.state === "error"
+            ? current.activeStage
+            : null,
+      completedStages: current.completedStages,
+      code: errorCode(cause, "demo_session_failed"),
+      detail: safeDetail(cause, "The selected Immortal session failed closed."),
+      recoverable: true,
+    })
+  }
+
+  private emitLifecycle(lifecycle: DemoLifecycleState): void {
+    this.lifecycleState = lifecycle
+    if (!this.stopped) this.listeners.onLifecycle(lifecycle)
+  }
+
+  private async serialSession<Result>(
+    sessionId: string,
+    operation: () => Promise<Result>
+  ): Promise<Result> {
+    const prior = this.sessionQueues.get(sessionId) ?? Promise.resolve()
+    const current = prior.catch(() => undefined).then(operation)
+    const queued = current.then(
+      () => undefined,
+      () => undefined
+    )
+    this.sessionQueues.set(sessionId, queued)
+    try {
+      return await current
+    } finally {
+      if (this.sessionQueues.get(sessionId) === queued) {
+        this.sessionQueues.delete(sessionId)
+      }
+    }
   }
 
   async requestQuotes(input: QuoteRequestInput, force = false): Promise<void> {
@@ -553,6 +978,7 @@ export class ImmortalBrowserRuntime {
     ) {
       return
     }
+    this.relayReady = false
     this.emit(
       attempt === 0
         ? {
@@ -580,9 +1006,13 @@ export class ImmortalBrowserRuntime {
         onDisconnect: () => this.scheduleReconnect(),
       })
       if (this.stopped || this.transport !== transport) return
+      this.relayReady = true
       this.reconnectAttempt = 0
       this.publishProvenance()
       this.emitLive()
+      if (this.lockedSessionId) {
+        this.scheduleLifecycleAdvance(this.lockedSessionId, 0)
+      }
     } catch (cause) {
       if (this.stopped) return
       if (
@@ -602,6 +1032,7 @@ export class ImmortalBrowserRuntime {
 
   private scheduleReconnect(): void {
     if (this.stopped || this.reconnectTimer) return
+    this.relayReady = false
     this.reconnectAttempt += 1
     const attempt = this.reconnectAttempt
     this.emit({
@@ -620,8 +1051,20 @@ export class ImmortalBrowserRuntime {
   private async consumeSnapshot(snapshot: RelaySnapshot): Promise<void> {
     for (const event of snapshot.publicEvents)
       await this.consumePublicEvent(event)
-    for (const event of snapshot.privateEvents)
-      await this.consumePrivateEvent(event)
+    if (!this.client || !this.identity) return
+    const client = this.client
+    const identity = this.identity
+    const deliveries = await Promise.all(
+      snapshot.privateEvents.map((event) =>
+        validatePrivateDelivery(client, event, identity)
+      )
+    )
+    deliveries.sort((left, right) =>
+      comparePrivateSnapshotDelivery(left, right, identity.pubkey)
+    )
+    for (const delivery of deliveries) {
+      await this.consumeValidatedPrivateDelivery(delivery)
+    }
   }
 
   private async consumePublicEvent(event: Event): Promise<void> {
@@ -667,14 +1110,30 @@ export class ImmortalBrowserRuntime {
 
   private async consumePrivateEvent(event: Event): Promise<void> {
     if (!this.client || !this.identity || !this.store) return
-    const delivery = await validatePrivateDelivery(
-      this.client,
-      event,
-      this.identity
-    )
-    let session: StoredImmortalSession
+    let delivery: ValidatedPrivateDelivery
     try {
-      session = await this.store.get(delivery.sessionId)
+      delivery = await validatePrivateDelivery(
+        this.client,
+        event,
+        this.identity
+      )
+    } catch (cause) {
+      if (this.lockedSessionId) {
+        this.emitLifecycleFailure(this.lockedSessionId, cause)
+      }
+      return
+    }
+    await this.consumeValidatedPrivateDelivery(delivery)
+  }
+
+  private async consumeValidatedPrivateDelivery(
+    delivery: ValidatedPrivateDelivery
+  ): Promise<void> {
+    if (!this.client || !this.store) return
+    const client = this.client
+    const store = this.store
+    try {
+      await store.get(delivery.sessionId)
     } catch {
       // A Quote can race the durable RFQ session creation. The live lifecycle
       // creates the session before publishing its RFQ; unknown sessions are
@@ -682,45 +1141,71 @@ export class ImmortalBrowserRuntime {
       return
     }
     try {
-      session = await this.store.appendDelivery(
-        delivery.sessionId,
-        delivery.signedRecord,
-        delivery.storedDelivery
-      )
-      const result = session.engineSnapshotJsonHex
-        ? await Effect.runPromise(
-            ingestRequesterSession(
-              this.client,
-              jsonValue({
-                snapshot_json_hex: session.engineSnapshotJsonHex,
-                records: [delivery.unwrapped.event],
-                deliveries: engineInputsForSession(session),
-              })
-            )
-          )
-        : delivery.unwrapped.event.kind === 39_605
+      await this.serialSession(delivery.sessionId, async () => {
+        let session = await store.get(delivery.sessionId)
+        const candidate = sessionWithDelivery(
+          session,
+          delivery.signedRecord,
+          delivery.storedDelivery
+        )
+        let result = candidate.engineSnapshotJsonHex
           ? await Effect.runPromise(
-              createRequesterSession(
-                this.client,
+              ingestRequesterSession(
+                client,
                 jsonValue({
-                  config: sessionConfig(session),
-                  records: session.signedRecords.map(storedRecordEvent),
-                  exit_packages: [],
-                  deliveries: engineInputsForSession(session),
+                  snapshot_json_hex: candidate.engineSnapshotJsonHex,
+                  records: [delivery.unwrapped.event],
+                  deliveries: engineInputsForSession(candidate),
                 })
               )
             )
-          : null
-      if (!result) return
-      await this.store.saveEngineSnapshot(
-        session.sessionId,
-        result.snapshot_json_hex,
-        result.view
-      )
-      if (delivery.unwrapped.event.kind === 39_605) {
-        this.acceptQuote(result.view, delivery.unwrapped.event)
-      }
+          : delivery.unwrapped.event.kind === 39_605
+            ? await Effect.runPromise(
+                createRequesterSession(
+                  client,
+                  jsonValue({
+                    config: sessionConfig(candidate),
+                    records: candidate.signedRecords.map(storedRecordEvent),
+                    exit_packages: [],
+                    deliveries: engineInputsForSession(candidate),
+                  })
+                )
+              )
+            : null
+        if (!result) return
+        if (delivery.unwrapped.event.kind === 39_609) {
+          result = await Effect.runPromise(
+            restoreRequesterSession(
+              client,
+              jsonValue({
+                snapshot_json_hex: result.snapshot_json_hex,
+                deliveries: engineInputsForSession(candidate),
+              })
+            )
+          )
+        }
+        session = await store.commitDeliveryAndEngineSnapshot(
+          delivery.sessionId,
+          delivery.signedRecord,
+          delivery.storedDelivery,
+          result.snapshot_json_hex,
+          result.view
+        )
+        if (delivery.unwrapped.event.kind === 39_605) {
+          this.acceptQuote(result.view, delivery.unwrapped.event)
+        }
+        if (this.lockedSessionId === session.sessionId) {
+          this.emitSessionLifecycle(session)
+          if (this.lifecycleState.state === "running") {
+            this.scheduleLifecycleAdvance(session.sessionId)
+          }
+        }
+      })
     } catch (cause) {
+      if (this.lockedSessionId === delivery.sessionId) {
+        this.emitLifecycleFailure(delivery.sessionId, cause)
+        return
+      }
       const context = this.quoteContexts.get(delivery.sessionId)
       if (!context || context.requestKey !== quoteStateKey(this.quoteState))
         return
@@ -743,6 +1228,7 @@ export class ImmortalBrowserRuntime {
     if (!this.client || !this.store) return 0
     const sessions = await this.store.list()
     let restored = 0
+    const started: StoredImmortalSession[] = []
     for (const session of sessions) {
       if (!session.engineSnapshotJsonHex) continue
       const result = await Effect.runPromise(
@@ -754,12 +1240,20 @@ export class ImmortalBrowserRuntime {
           })
         )
       )
-      await this.store.saveEngineSnapshot(
+      const updated = await this.store.saveEngineSnapshot(
         session.sessionId,
         result.snapshot_json_hex,
         result.view
       )
+      if (isStartedDemoSession(updated)) started.push(updated)
       restored += 1
+    }
+    const selected = started.toSorted(
+      (left, right) => right.updatedAt - left.updatedAt
+    )[0]
+    if (selected) {
+      this.lockedSessionId = selected.sessionId
+      this.emitSessionLifecycle(selected)
     }
     return restored
   }
@@ -845,10 +1339,118 @@ function sessionConfig(
   }
 }
 
+async function requesterLocalContractInputs(
+  swapType: string,
+  sessionId: string
+): Promise<Record<string, unknown>> {
+  const topology = {
+    submarine: {
+      effects: [
+        { role: "chain_fund", leg_id: "source" },
+        { role: "chain_refund", leg_id: "source" },
+      ],
+      exits: [{ leg_id: "source", path: "refund", package_mode: "presigned" }],
+    },
+    reverse: {
+      effects: [
+        { role: "invoice_pay", leg_id: "lightning" },
+        { role: "chain_claim", leg_id: "destination" },
+      ],
+      exits: [
+        {
+          leg_id: "destination",
+          path: "claim",
+          package_mode: "wallet_sign",
+        },
+      ],
+    },
+    chain: {
+      effects: [
+        { role: "chain_fund", leg_id: "source" },
+        { role: "chain_refund", leg_id: "source" },
+        { role: "chain_claim", leg_id: "destination" },
+      ],
+      exits: [
+        { leg_id: "source", path: "refund", package_mode: "presigned" },
+        {
+          leg_id: "destination",
+          path: "claim",
+          package_mode: "wallet_sign",
+        },
+      ],
+    },
+  }[swapType]
+  if (!topology) {
+    throw new Error(
+      "swp_contract_terms_mismatch: the selected Quote has an unsupported swap type"
+    )
+  }
+  return {
+    effect_bindings: topology.effects,
+    exit_package_commitments: await Promise.all(
+      topology.exits.map(async (exit) => ({
+        participant_role: "requester",
+        ...exit,
+        package_sha256: await digestJson({
+          schema: "openagents.bazaar.no-spend-exit-commitment.v1",
+          sessionId,
+          legId: exit.leg_id,
+          path: exit.path,
+          packageMode: exit.package_mode,
+          executable: false,
+        }),
+      }))
+    ),
+  }
+}
+
+function record(value: unknown, label: string): Record<string, unknown> {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new Error(
+      `swp_contract_terms_mismatch: the selected ${label} are malformed`
+    )
+  }
+  return value as Record<string, unknown>
+}
+
+function stringMember(value: Record<string, unknown>, name: string): string {
+  const member = value[name]
+  if (typeof member !== "string" || member.length === 0) {
+    throw new Error(
+      `swp_contract_terms_mismatch: the selected Quote omits ${name}`
+    )
+  }
+  return member
+}
+
 function storedRecordEvent(
   record: StoredImmortalSession["signedRecords"][number]
 ): Event {
   return JSON.parse(record.rawSignedEvent) as Event
+}
+
+function sessionWithDelivery(
+  session: StoredImmortalSession,
+  signedRecord: StoredSignedRecord,
+  delivery: StoredValidatedDelivery
+): StoredImmortalSession {
+  const hasRecord = session.signedRecords.some(
+    (candidate) => candidate.id === signedRecord.id
+  )
+  const hasDelivery = session.validatedDeliveries.some(
+    (candidate) =>
+      candidate.eventId === delivery.eventId &&
+      candidate.wrapId === delivery.wrapId
+  )
+  return {
+    ...session,
+    signedRecords: hasRecord
+      ? session.signedRecords
+      : [...session.signedRecords, signedRecord],
+    validatedDeliveries: hasDelivery
+      ? session.validatedDeliveries
+      : [...session.validatedDeliveries, delivery],
+  }
 }
 
 function quoteRequestKey(input: QuoteRequestInput): string {
@@ -884,6 +1486,35 @@ function currentProviderQuotes(
   return [...providers.values()].sort((left, right) =>
     left.providerPubkey.localeCompare(right.providerPubkey)
   )
+}
+
+function comparePrivateSnapshotDelivery(
+  left: ValidatedPrivateDelivery,
+  right: ValidatedPrivateDelivery,
+  requesterPubkey: string
+): number {
+  return (
+    left.sessionId.localeCompare(right.sessionId) ||
+    privateRecordRank(left.unwrapped.event, requesterPubkey) -
+      privateRecordRank(right.unwrapped.event, requesterPubkey) ||
+    left.unwrapped.event.created_at - right.unwrapped.event.created_at ||
+    left.unwrapped.event.id.localeCompare(right.unwrapped.event.id) ||
+    left.unwrapped.wrapId.localeCompare(right.unwrapped.wrapId)
+  )
+}
+
+function privateRecordRank(event: Event, requesterPubkey: string): number {
+  if (event.kind === 39_604) return 0
+  if (event.kind === 39_605) return 1
+  if (event.kind === 39_606) return 2
+  if (event.kind === 39_610) return event.pubkey === requesterPubkey ? 3 : 4
+  if (event.kind === 39_607) return 5
+  if (event.kind === 39_608) {
+    const action = tagValue(event.tags, "action")
+    return { request: 6, accepted: 7, effective: 8 }[action] ?? 9
+  }
+  if (event.kind === 39_609) return 10
+  return 11
 }
 
 function randomHex32(): string {

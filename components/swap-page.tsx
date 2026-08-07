@@ -51,6 +51,10 @@ import {
   type QuoteState,
   type ValidatedQuote,
 } from "@/lib/immortal/market"
+import {
+  DEMO_LIFECYCLE_STAGES,
+  type DemoLifecycleState,
+} from "@/lib/immortal/lifecycle"
 
 const assetUi = {
   LN: {
@@ -199,8 +203,18 @@ export function SwapPage({ config }: { config: ImmortalConfigResult }) {
   const [receiveTicker, setReceiveTicker] = useState<MarketAssetTicker>("BTC")
   const [sendAmount, setSendAmount] = useState("")
   const [destination, setDestination] = useState("")
-  const { status, provenance, market, quotes, requestQuotes, resetQuotes } =
-    useImmortalRuntime(config)
+  const {
+    status,
+    provenance,
+    market,
+    quotes,
+    lifecycle,
+    requestQuotes,
+    resetQuotes,
+    startDemo,
+    retryDemo,
+    runAnotherDemo,
+  } = useImmortalRuntime(config)
 
   const direction = directionByTicker(market, sendTicker, receiveTicker)
   const sendOptions = useMemo(
@@ -294,13 +308,30 @@ export function SwapPage({ config }: { config: ImmortalConfigResult }) {
 
   const quoteReady = Boolean(selectedQuote && amountState.valid)
   const canCreate = quoteReady && destination.trim().length > 0
+  const sessionActive = lifecycle.state !== "idle"
+
+  function submitDemo() {
+    if (lifecycle.state === "complete") {
+      runAnotherDemo()
+      setSendAmount("")
+      setDestination("")
+      return
+    }
+    if (lifecycle.state === "error") {
+      retryDemo()
+      return
+    }
+    if (selectedQuote && canCreate) {
+      void startDemo(selectedQuote.sessionId)
+    }
+  }
 
   return (
-    <main className="dark flex min-h-svh justify-center bg-background px-0 py-0 text-foreground sm:px-6 sm:py-16">
-      <Card className="relative w-full max-w-[31rem] gap-0 self-start rounded-none bg-card py-0 shadow-none ring-foreground/15 sm:rounded-2xl">
+    <main className="dark flex h-svh items-center justify-center overflow-hidden bg-background px-0 py-0 text-foreground sm:px-6 sm:py-6">
+      <Card className="relative max-h-svh w-full max-w-[31rem] gap-0 overflow-hidden rounded-none bg-card py-0 shadow-none ring-foreground/15 sm:max-h-[calc(100svh-3rem)] sm:rounded-2xl">
         <CardHeader className="relative px-4 pt-5 pb-1 sm:px-5 sm:pt-5">
           <span className="absolute top-5 left-4 rounded border border-foreground/15 px-1.5 py-0.5 font-mono text-[0.625rem] tracking-[0.12em] text-muted-foreground sm:left-5">
-            REGTEST
+            DEMO · NO-SPEND
           </span>
           <CardTitle
             role="heading"
@@ -312,55 +343,66 @@ export function SwapPage({ config }: { config: ImmortalConfigResult }) {
           <RuntimePopover status={status} provenance={provenance} />
         </CardHeader>
 
-        <CardContent className="px-4 pt-2 pb-5 sm:px-5 sm:pb-5">
-          <form onSubmit={(event) => event.preventDefault()}>
-            <div className="relative space-y-3">
-              <AmountField
-                side="Send"
-                amount={sendAmount}
-                ticker={sendTicker}
-                options={sendOptions}
-                onAmountChange={changeAmount}
-                onAssetChange={changeSendAsset}
-                hint={directionHint(direction)}
-                invalid={sendAmount.length > 0 && !amountState.valid}
-              />
+        <CardContent className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 pt-2 pb-5 sm:px-5 sm:pb-5">
+          <form
+            onSubmit={(event) => {
+              event.preventDefault()
+              submitDemo()
+            }}
+          >
+            <fieldset disabled={sessionActive} className="contents">
+              <div className="relative space-y-3">
+                <AmountField
+                  side="Send"
+                  amount={sendAmount}
+                  ticker={sendTicker}
+                  options={sendOptions}
+                  onAmountChange={changeAmount}
+                  onAssetChange={changeSendAsset}
+                  hint={directionHint(direction)}
+                  invalid={sendAmount.length > 0 && !amountState.valid}
+                />
 
-              <Button
-                type="button"
-                variant="outline"
-                size="icon"
-                aria-label="Reverse swap direction"
-                disabled={!reverseAvailable}
-                onClick={reverseSwap}
-                className="absolute top-1/2 left-1/2 z-20 size-8 -translate-x-1/2 -translate-y-1/2 rounded-md border-foreground/15 bg-card text-muted-foreground shadow-[0_2px_6px_oklch(0_0_0/0.35)] hover:border-foreground/25 hover:bg-accent hover:text-foreground disabled:bg-card disabled:opacity-50"
-              >
-                <ArrowDownIcon className="size-3.5" aria-hidden="true" />
-              </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="icon"
+                  aria-label="Reverse swap direction"
+                  disabled={!reverseAvailable}
+                  onClick={reverseSwap}
+                  className="absolute top-1/2 left-1/2 z-20 size-8 -translate-x-1/2 -translate-y-1/2 rounded-md border-foreground/15 bg-card text-muted-foreground shadow-[0_2px_6px_oklch(0_0_0/0.35)] hover:border-foreground/25 hover:bg-accent hover:text-foreground disabled:bg-card disabled:opacity-50"
+                >
+                  <ArrowDownIcon className="size-3.5" aria-hidden="true" />
+                </Button>
 
-              <AmountField
-                side="Receive"
-                amount={receiveAmount}
-                ticker={receiveTicker}
-                options={receiveOptions}
-                onAssetChange={changeReceiveAsset}
-                hint={
-                  selectedQuote
-                    ? "Exact signed output"
-                    : "Waiting for signed Quotes"
-                }
-                readOnly
-              />
-            </div>
+                <AmountField
+                  side="Receive"
+                  amount={receiveAmount}
+                  ticker={receiveTicker}
+                  options={receiveOptions}
+                  onAssetChange={changeReceiveAsset}
+                  hint={
+                    selectedQuote
+                      ? "Exact signed output"
+                      : "Waiting for signed Quotes"
+                  }
+                  readOnly
+                />
+              </div>
+            </fieldset>
 
-            <QuoteSummary quotes={quotes} direction={direction} />
+            {lifecycle.state === "idle" ? (
+              <QuoteSummary quotes={quotes} direction={direction} />
+            ) : (
+              <LifecyclePanel lifecycle={lifecycle} />
+            )}
 
             <p
               role="status"
               aria-live="polite"
               className="mt-3 min-h-4 text-center text-xs text-muted-foreground"
             >
-              {cardStatus(status, direction, amountState, quotes)}
+              {cardStatus(status, direction, amountState, quotes, lifecycle)}
             </p>
 
             <Separator className="my-4 bg-foreground/10" />
@@ -373,6 +415,7 @@ export function SwapPage({ config }: { config: ImmortalConfigResult }) {
               type="text"
               autoComplete="off"
               value={destination}
+              disabled={sessionActive}
               onChange={(event) => setDestination(event.target.value)}
               placeholder={`Enter ${destinationLabel.toLowerCase()} to receive funds`}
               className="h-12 rounded-xl border-foreground/15 bg-input text-center text-sm placeholder:text-muted-foreground focus-visible:border-primary focus-visible:ring-primary/25"
@@ -383,16 +426,101 @@ export function SwapPage({ config }: { config: ImmortalConfigResult }) {
             <Button
               type="submit"
               size="lg"
-              disabled={!canCreate}
+              disabled={
+                lifecycle.state === "running" ||
+                (lifecycle.state === "idle" && !canCreate)
+              }
+              data-demo-primary-action
               className="h-11 w-full rounded-xl bg-primary font-bold text-primary-foreground hover:bg-primary/85 disabled:bg-[oklch(0.471_0.0177_251.32)] disabled:text-background disabled:opacity-100"
             >
-              Create Swap
+              {primaryActionLabel(lifecycle)}
             </Button>
           </form>
         </CardContent>
       </Card>
     </main>
   )
+}
+
+function LifecyclePanel({
+  lifecycle,
+}: {
+  lifecycle: Exclude<DemoLifecycleState, { readonly state: "idle" }>
+}) {
+  const activeStage =
+    lifecycle.state === "running" || lifecycle.state === "error"
+      ? lifecycle.activeStage
+      : null
+  return (
+    <section
+      aria-label="No-spend session lifecycle"
+      data-lifecycle-state={lifecycle.state}
+      data-lifecycle-stage={activeStage ?? "complete"}
+      data-provider-role={lifecycle.providerRole ?? undefined}
+      className="mt-4 rounded-xl border border-foreground/15 bg-input/45 p-3"
+    >
+      <div className="mb-2 flex items-center justify-between gap-3 text-[0.6875rem] font-medium text-muted-foreground">
+        <span className="font-mono tracking-wide uppercase">
+          Immortal session
+        </span>
+        <span>
+          {lifecycle.providerRole === "provider-a"
+            ? "Provider A"
+            : lifecycle.providerRole === "provider-b"
+              ? "Provider B"
+              : "Selected provider"}
+        </span>
+      </div>
+      <ol className="max-h-32 space-y-1 overflow-y-auto overscroll-contain pr-1 text-xs">
+        {DEMO_LIFECYCLE_STAGES.map((stage) => {
+          const complete = lifecycle.completedStages.includes(stage.id)
+          const active = stage.id === activeStage
+          return (
+            <li
+              key={stage.id}
+              data-lifecycle-milestone={stage.id}
+              data-complete={complete || undefined}
+              className={`flex items-center gap-2 rounded-md px-2 py-1.5 ${
+                active ? "bg-accent text-foreground" : "text-muted-foreground"
+              }`}
+            >
+              <span
+                className={`flex size-4 shrink-0 items-center justify-center rounded-full border ${
+                  complete
+                    ? "border-primary bg-primary text-primary-foreground"
+                    : active
+                      ? "border-primary"
+                      : "border-foreground/20"
+                }`}
+                aria-hidden="true"
+              >
+                {complete ? (
+                  <CheckIcon className="size-2.5" strokeWidth={3} />
+                ) : active ? (
+                  <span className="size-1.5 animate-pulse rounded-full bg-primary motion-reduce:animate-none" />
+                ) : null}
+              </span>
+              <span>{stage.label}</span>
+            </li>
+          )
+        })}
+      </ol>
+      {lifecycle.state === "error" ? (
+        <p className="mt-2 border-t border-foreground/10 pt-2 text-xs text-destructive">
+          {lifecycle.detail}
+        </p>
+      ) : null}
+    </section>
+  )
+}
+
+function primaryActionLabel(lifecycle: DemoLifecycleState): string {
+  return {
+    idle: "Create Swap",
+    running: "Running no-spend session…",
+    error: "Retry session",
+    complete: "Run another demo",
+  }[lifecycle.state]
 }
 
 function QuoteSummary({
@@ -672,8 +800,10 @@ function cardStatus(
   status: ImmortalRuntimeStatus,
   direction: MarketDirection | null,
   amount: { readonly valid: boolean; readonly detail: string },
-  quotes: QuoteState
+  quotes: QuoteState,
+  lifecycle: DemoLifecycleState
 ): string {
+  if (lifecycle.state !== "idle") return lifecycle.detail
   if (status.state !== "live") return status.detail
   if (!direction?.actionable) {
     return (
