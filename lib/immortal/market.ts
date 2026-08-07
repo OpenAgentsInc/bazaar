@@ -15,6 +15,10 @@ const MAIN_REGTEST_CHAIN =
   "swp:1:bip122:00000000000000000000000000000000:btc:chain"
 const MAIN_REGTEST_LIGHTNING =
   "swp:1:bip122:00000000000000000000000000000000:btc:lightning"
+const PUBLIC_REGTEST_CHAIN =
+  "swp:1:bip122:0f9188f13cb7b2c9e5c72a6b65eeada4:btc:chain"
+const PUBLIC_REGTEST_LIGHTNING =
+  "swp:1:bip122:0f9188f13cb7b2c9e5c72a6b65eeada4:btc:lightning"
 const LIQUID_ASSET = /^swp:1:[^:]+:elements:[0-9a-f]{64}:liquid$/
 
 export type MarketAssetTicker = "LN" | "BTC" | "LBTC"
@@ -551,7 +555,10 @@ function buildDirection(routes: readonly MarketRoute[]): MarketDirection {
 }
 
 function marketAsset(assetId: string): MarketAsset | null {
-  if (assetId === MAIN_REGTEST_LIGHTNING) {
+  if (
+    assetId === MAIN_REGTEST_LIGHTNING ||
+    assetId === PUBLIC_REGTEST_LIGHTNING
+  ) {
     return {
       id: assetId,
       ticker: "LN",
@@ -559,7 +566,7 @@ function marketAsset(assetId: string): MarketAsset | null {
       destination: "Lightning invoice or Lightning address",
     }
   }
-  if (assetId === MAIN_REGTEST_CHAIN) {
+  if (assetId === MAIN_REGTEST_CHAIN || assetId === PUBLIC_REGTEST_CHAIN) {
     return {
       id: assetId,
       ticker: "BTC",

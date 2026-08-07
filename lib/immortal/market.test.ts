@@ -20,6 +20,10 @@ const providerA = "11".repeat(32)
 const providerB = "22".repeat(32)
 const chain = "swp:1:bip122:00000000000000000000000000000000:btc:chain"
 const lightning = "swp:1:bip122:00000000000000000000000000000000:btc:lightning"
+const publicChain =
+  "swp:1:bip122:0f9188f13cb7b2c9e5c72a6b65eeada4:btc:chain"
+const publicLightning =
+  "swp:1:bip122:0f9188f13cb7b2c9e5c72a6b65eeada4:btc:lightning"
 const otherChain = "swp:1:bip122:11111111111111111111111111111111:btc:chain"
 const destination: ValidatedRegtestDestination = {
   schema: "openagents.bazaar.regtest-destination.v1",
@@ -107,6 +111,31 @@ test("live replaceable heads expose only jointly offered engine rails", () => {
   assert.equal(pausedReverse?.providerCount, 1)
   assert.equal(pausedReverse?.actionable, false)
   assert.match(pausedReverse?.unavailableReason ?? "", /Two active providers/)
+})
+
+test("recognizes the exact public regtest asset namespace", () => {
+  const events = [
+    profile(providerA, "provider-a", 10, "active"),
+    profile(providerB, "provider-b", 10, "active"),
+    publicOffering(providerA, "no-spend-default", "provider-a", 11),
+    publicOffering(
+      providerB,
+      "no-spend-demo-alternate",
+      "provider-b",
+      11
+    ),
+  ]
+  const market = foldMarketHeads(events, config)
+  assert.equal(market.activeProviderCount, 2)
+  assert.equal(
+    eligibleRoutes(market, {
+      inputAssetId: publicLightning,
+      outputAssetId: publicChain,
+      inputAmount: "1000",
+      destination,
+    }).length,
+    2
+  )
 })
 
 test("signed Quote arithmetic, bindings, expiry, and reservations fail closed", () => {
@@ -256,6 +285,21 @@ function offering(
       },
     })
   )
+}
+
+function publicOffering(
+  pubkey: string,
+  distinct: string,
+  profileDistinct: string,
+  createdAt: number
+): Event {
+  const base = offering(pubkey, distinct, profileDistinct, createdAt, "active")
+  return {
+    ...base,
+    content: base.content
+      .replaceAll(chain, publicChain)
+      .replaceAll(lightning, publicLightning),
+  }
 }
 
 function event(

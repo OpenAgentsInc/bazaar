@@ -72,6 +72,9 @@ to the corresponding ordered relay. Private RFQs, recovery copies, and later
 session records stay on that provider's relay lane. A disconnected lane
 reconnects independently with the same browser identity and reopens both
 snapshots before the full two-provider market is marked live.
+Public Offering routes and generated RFQs use the exact signed regtest asset
+namespace `bip122:0f9188f13cb7b2c9e5c72a6b65eeada4`; the all-zero local
+no-spend fixture namespace is never projected into public mode.
 
 ## Capability-scoped funded sessions
 

@@ -1,8 +1,10 @@
 import type { ImmortalConfigResult, ImmortalDemoConfig } from "./config"
 import type { PublicRegtestConfig } from "./public-config"
 
-const BTC = "swp:1:bip122:00000000000000000000000000000000:btc:chain"
-const LN = "swp:1:bip122:00000000000000000000000000000000:btc:lightning"
+const BTC =
+  "swp:1:bip122:0f9188f13cb7b2c9e5c72a6b65eeada4:btc:chain"
+const LN =
+  "swp:1:bip122:0f9188f13cb7b2c9e5c72a6b65eeada4:btc:lightning"
 
 /**
  * Project the signed public launch into the existing direct-relay requester

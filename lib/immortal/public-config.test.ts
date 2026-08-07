@@ -201,6 +201,13 @@ test("projects both signed relays into provider-specific requester lanes", () =>
     projected.config.providers.map((provider) => provider.relayUrl),
     ["wss://relay-a.example.com", "wss://relay-b.example.com"]
   )
+  assert.ok(
+    projected.config.requestContract.templates.every((template) =>
+      [template.inputAssetId, template.outputAssetId].every((assetId) =>
+        assetId.includes("bip122:0f9188f13cb7b2c9e5c72a6b65eeada4")
+      )
+    )
+  )
 })
 
 test("signature, expiry, digest, schema, origin, network, and URL attacks fail before transport", () => {
