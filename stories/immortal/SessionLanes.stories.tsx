@@ -16,6 +16,8 @@ function Frame({ children }: { children: React.ReactNode }) {
 
 const meta = {
   title: "Immortal Viz/Session Sequence",
+  // Pinned to the pre-regroup id so shared links keep resolving.
+  id: "immortal-session-sequence",
   parameters: { layout: "fullscreen" },
 } satisfies Meta
 

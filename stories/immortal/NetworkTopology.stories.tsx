@@ -25,6 +25,8 @@ function Frame({
 
 const meta = {
   title: "Immortal Viz/Network Topology",
+  // Pinned to the pre-regroup id so shared links keep resolving.
+  id: "immortal-network-topology",
   parameters: { layout: "fullscreen" },
 } satisfies Meta
 

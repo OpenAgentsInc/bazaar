@@ -48,6 +48,8 @@ function Panel({
 
 const meta = {
   title: "Immortal Viz/Instruments",
+  // Pinned to the pre-regroup id so shared links keep resolving.
+  id: "immortal-instruments",
   parameters: { layout: "fullscreen" },
 } satisfies Meta
 

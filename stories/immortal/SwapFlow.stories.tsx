@@ -13,6 +13,8 @@ function Frame({ children }: { children: React.ReactNode }) {
 
 const meta = {
   title: "Immortal Viz/Swap Flow",
+  // Pinned to the pre-regroup id so shared links keep resolving.
+  id: "immortal-swap-flow",
   parameters: { layout: "fullscreen" },
 } satisfies Meta
 
