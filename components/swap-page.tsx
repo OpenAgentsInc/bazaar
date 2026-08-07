@@ -6,6 +6,7 @@ import {
   BitcoinIcon,
   CheckIcon,
   ChevronRightIcon,
+  CopyIcon,
   DropletsIcon,
   Settings2Icon,
   ShieldCheckIcon,
@@ -37,10 +38,19 @@ import {
 } from "@/components/ui/select"
 import { Separator } from "@/components/ui/separator"
 import { useImmortalRuntime } from "@/hooks/use-immortal-runtime"
+import {
+  useFundedRegtest,
+  type FundedRuntimeState,
+} from "@/hooks/use-funded-regtest"
+import type { FundedRegtestConfigResult } from "@/lib/immortal/funded-config"
 import type {
   ImmortalConfigResult,
   ImmortalRuntimeStatus,
 } from "@/lib/immortal/config"
+import type {
+  FundedJourney,
+  FundedSessionManifest,
+} from "@/lib/immortal/funded-session"
 import {
   findDirection,
   formatAtomicAmount,
@@ -198,7 +208,16 @@ function AmountField({
   )
 }
 
-export function SwapPage({ config }: { config: ImmortalConfigResult }) {
+type SwapMode = "no_spend" | "funded_regtest"
+
+export function SwapPage({
+  config,
+  fundedConfig,
+}: {
+  config: ImmortalConfigResult
+  fundedConfig: FundedRegtestConfigResult
+}) {
+  const [mode, setMode] = useState<SwapMode>("no_spend")
   const [sendTicker, setSendTicker] = useState<MarketAssetTicker>("LN")
   const [receiveTicker, setReceiveTicker] = useState<MarketAssetTicker>("BTC")
   const [sendAmount, setSendAmount] = useState("")
@@ -214,7 +233,25 @@ export function SwapPage({ config }: { config: ImmortalConfigResult }) {
     startDemo,
     retryDemo,
     runAnotherDemo,
-  } = useImmortalRuntime(config)
+  } = useImmortalRuntime(config, mode === "no_spend")
+  const funded = useFundedRegtest(fundedConfig, mode === "funded_regtest")
+
+  useEffect(() => {
+    if (
+      fundedConfig.state === "ready" &&
+      window.localStorage.getItem("bazaar.swap-mode.v1") === "funded_regtest"
+    ) {
+      const frame = window.requestAnimationFrame(() =>
+        setMode("funded_regtest")
+      )
+      return () => window.cancelAnimationFrame(frame)
+    }
+  }, [fundedConfig.state])
+
+  function changeMode(nextMode: SwapMode) {
+    setMode(nextMode)
+    window.localStorage.setItem("bazaar.swap-mode.v1", nextMode)
+  }
 
   const direction = directionByTicker(market, sendTicker, receiveTicker)
   const sendOptions = useMemo(
@@ -331,7 +368,7 @@ export function SwapPage({ config }: { config: ImmortalConfigResult }) {
       <Card className="relative max-h-svh w-full max-w-[31rem] gap-0 overflow-hidden rounded-none bg-card py-0 shadow-none ring-foreground/15 sm:max-h-[calc(100svh-3rem)] sm:rounded-2xl">
         <CardHeader className="relative px-4 pt-5 pb-1 sm:px-5 sm:pt-5">
           <span className="absolute top-5 left-4 rounded border border-foreground/15 px-1.5 py-0.5 font-mono text-[0.625rem] tracking-[0.12em] text-muted-foreground sm:left-5">
-            DEMO · NO-SPEND
+            {mode === "no_spend" ? "DEMO · NO-SPEND" : "REGTEST · FUNDED"}
           </span>
           <CardTitle
             role="heading"
@@ -340,106 +377,413 @@ export function SwapPage({ config }: { config: ImmortalConfigResult }) {
           >
             Create Swap
           </CardTitle>
-          <RuntimePopover status={status} provenance={provenance} />
+          <RuntimePopover
+            mode={mode}
+            onModeChange={changeMode}
+            modeLocked={
+              lifecycle.state === "running" ||
+              funded.runtime.state === "authorizing"
+            }
+            fundedConfig={fundedConfig}
+            fundedRuntime={funded.runtime}
+            status={status}
+            provenance={provenance}
+          />
         </CardHeader>
 
         <CardContent className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 pt-2 pb-5 sm:px-5 sm:pb-5">
-          <form
-            onSubmit={(event) => {
-              event.preventDefault()
-              submitDemo()
-            }}
-          >
-            <fieldset disabled={sessionActive} className="contents">
-              <div className="relative space-y-3">
-                <AmountField
-                  side="Send"
-                  amount={sendAmount}
-                  ticker={sendTicker}
-                  options={sendOptions}
-                  onAmountChange={changeAmount}
-                  onAssetChange={changeSendAsset}
-                  hint={directionHint(direction)}
-                  invalid={sendAmount.length > 0 && !amountState.valid}
-                />
-
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="icon"
-                  aria-label="Reverse swap direction"
-                  disabled={!reverseAvailable}
-                  onClick={reverseSwap}
-                  className="absolute top-1/2 left-1/2 z-20 size-8 -translate-x-1/2 -translate-y-1/2 rounded-md border-foreground/15 bg-card text-muted-foreground shadow-[0_2px_6px_oklch(0_0_0/0.35)] hover:border-foreground/25 hover:bg-accent hover:text-foreground disabled:bg-card disabled:opacity-50"
-                >
-                  <ArrowDownIcon className="size-3.5" aria-hidden="true" />
-                </Button>
-
-                <AmountField
-                  side="Receive"
-                  amount={receiveAmount}
-                  ticker={receiveTicker}
-                  options={receiveOptions}
-                  onAssetChange={changeReceiveAsset}
-                  hint={
-                    selectedQuote
-                      ? "Exact signed output"
-                      : "Waiting for signed Quotes"
-                  }
-                  readOnly
-                />
-              </div>
-            </fieldset>
-
-            {lifecycle.state === "idle" ? (
-              <QuoteSummary quotes={quotes} direction={direction} />
-            ) : (
-              <LifecyclePanel lifecycle={lifecycle} />
-            )}
-
-            <p
-              role="status"
-              aria-live="polite"
-              className="mt-3 min-h-4 text-center text-xs text-muted-foreground"
-            >
-              {cardStatus(status, direction, amountState, quotes, lifecycle)}
-            </p>
-
-            <Separator className="my-4 bg-foreground/10" />
-
-            <label htmlFor="destination" className="sr-only">
-              {destinationLabel}
-            </label>
-            <Input
-              id="destination"
-              type="text"
-              autoComplete="off"
-              value={destination}
-              disabled={sessionActive}
-              onChange={(event) => setDestination(event.target.value)}
-              placeholder={`Enter ${destinationLabel.toLowerCase()} to receive funds`}
-              className="h-12 rounded-xl border-foreground/15 bg-input text-center text-sm placeholder:text-muted-foreground focus-visible:border-primary focus-visible:ring-primary/25"
+          {mode === "funded_regtest" ? (
+            <FundedSwapContent
+              runtime={funded.runtime}
+              onAuthorize={() => void funded.authorize()}
             />
-
-            <Separator className="my-4 bg-foreground/10" />
-
-            <Button
-              type="submit"
-              size="lg"
-              disabled={
-                lifecycle.state === "running" ||
-                (lifecycle.state === "idle" && !canCreate)
-              }
-              data-demo-primary-action
-              className="h-11 w-full rounded-xl bg-primary font-bold text-primary-foreground hover:bg-primary/85 disabled:bg-[oklch(0.471_0.0177_251.32)] disabled:text-background disabled:opacity-100"
+          ) : (
+            <form
+              onSubmit={(event) => {
+                event.preventDefault()
+                submitDemo()
+              }}
             >
-              {primaryActionLabel(lifecycle)}
-            </Button>
-          </form>
+              <fieldset disabled={sessionActive} className="contents">
+                <div className="relative space-y-3">
+                  <AmountField
+                    side="Send"
+                    amount={sendAmount}
+                    ticker={sendTicker}
+                    options={sendOptions}
+                    onAmountChange={changeAmount}
+                    onAssetChange={changeSendAsset}
+                    hint={directionHint(direction)}
+                    invalid={sendAmount.length > 0 && !amountState.valid}
+                  />
+
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="icon"
+                    aria-label="Reverse swap direction"
+                    disabled={!reverseAvailable}
+                    onClick={reverseSwap}
+                    className="absolute top-1/2 left-1/2 z-20 size-8 -translate-x-1/2 -translate-y-1/2 rounded-md border-foreground/15 bg-card text-muted-foreground shadow-[0_2px_6px_oklch(0_0_0/0.35)] hover:border-foreground/25 hover:bg-accent hover:text-foreground disabled:bg-card disabled:opacity-50"
+                  >
+                    <ArrowDownIcon className="size-3.5" aria-hidden="true" />
+                  </Button>
+
+                  <AmountField
+                    side="Receive"
+                    amount={receiveAmount}
+                    ticker={receiveTicker}
+                    options={receiveOptions}
+                    onAssetChange={changeReceiveAsset}
+                    hint={
+                      selectedQuote
+                        ? "Exact signed output"
+                        : "Waiting for signed Quotes"
+                    }
+                    readOnly
+                  />
+                </div>
+              </fieldset>
+
+              {lifecycle.state === "idle" ? (
+                <QuoteSummary quotes={quotes} direction={direction} />
+              ) : (
+                <LifecyclePanel lifecycle={lifecycle} />
+              )}
+
+              <p
+                role="status"
+                aria-live="polite"
+                className="mt-3 min-h-4 text-center text-xs text-muted-foreground"
+              >
+                {cardStatus(status, direction, amountState, quotes, lifecycle)}
+              </p>
+
+              <Separator className="my-4 bg-foreground/10" />
+
+              <label htmlFor="destination" className="sr-only">
+                {destinationLabel}
+              </label>
+              <Input
+                id="destination"
+                type="text"
+                autoComplete="off"
+                value={destination}
+                disabled={sessionActive}
+                onChange={(event) => setDestination(event.target.value)}
+                placeholder={`Enter ${destinationLabel.toLowerCase()} to receive funds`}
+                className="h-12 rounded-xl border-foreground/15 bg-input text-center text-sm placeholder:text-muted-foreground focus-visible:border-primary focus-visible:ring-primary/25"
+              />
+
+              <Separator className="my-4 bg-foreground/10" />
+
+              <Button
+                type="submit"
+                size="lg"
+                disabled={
+                  lifecycle.state === "running" ||
+                  (lifecycle.state === "idle" && !canCreate)
+                }
+                data-demo-primary-action
+                className="h-11 w-full rounded-xl bg-primary font-bold text-primary-foreground hover:bg-primary/85 disabled:bg-[oklch(0.471_0.0177_251.32)] disabled:text-background disabled:opacity-100"
+              >
+                {primaryActionLabel(lifecycle)}
+              </Button>
+            </form>
+          )}
         </CardContent>
       </Card>
     </main>
   )
+}
+
+function FundedSwapContent({
+  runtime,
+  onAuthorize,
+}: {
+  runtime: FundedRuntimeState
+  onAuthorize: () => void
+}) {
+  const session = fundedSession(runtime)
+  const journey = session?.journeys[session.activeJourney]
+  const effect = journey?.pendingEffect ?? journey?.effectReceipt?.request
+  const sendTicker = journey?.name === "submarine" ? "BTC" : "LN"
+  const receiveTicker = journey?.name === "submarine" ? "LN" : "BTC"
+  const ready = runtime.state === "ready" && Boolean(effect)
+
+  return (
+    <section
+      aria-label="Funded regtest swap"
+      data-funded-state={runtime.state}
+      data-funded-journey={session?.activeJourney}
+    >
+      <div className="relative space-y-3">
+        <FundedAmountField
+          side="Send"
+          ticker={sendTicker}
+          amount={effect ? String(effect.amountSat) : ""}
+          hint={
+            effect
+              ? `${effect.amountSat.toLocaleString()} sats · exact effect`
+              : "Waiting for Immortal"
+          }
+        />
+
+        <span className="absolute top-1/2 left-1/2 z-20 flex size-8 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-md border border-foreground/15 bg-card text-muted-foreground shadow-[0_2px_6px_oklch(0_0_0/0.35)]">
+          <ArrowDownIcon className="size-3.5" aria-hidden="true" />
+        </span>
+
+        <FundedAmountField
+          side="Receive"
+          ticker={receiveTicker}
+          amount=""
+          hint="Determined by the signed Immortal contract"
+        />
+      </div>
+
+      <div className="mt-4 grid grid-cols-2 gap-2 text-xs">
+        <VerificationTile
+          label="Provider Status"
+          value={journey?.providerStatusClaim.state ?? "waiting"}
+          verified={false}
+          detail="Counterparty claim · unverified"
+        />
+        <VerificationTile
+          label="Local rails"
+          value={verificationLabel(journey)}
+          verified={
+            journey?.requesterVerification.state ===
+            "terminal_rail_evidence_verified"
+          }
+          detail="Immortal requester verification"
+        />
+      </div>
+
+      <p
+        role="status"
+        aria-live="polite"
+        className={`mt-3 min-h-8 text-center text-xs ${
+          runtime.state === "error"
+            ? "text-destructive"
+            : "text-muted-foreground"
+        }`}
+      >
+        {runtime.detail}
+      </p>
+
+      {session ? <FundedEvidencePanel session={session} /> : null}
+
+      <Separator className="my-4 bg-foreground/10" />
+
+      <Button
+        type="button"
+        size="lg"
+        disabled={!ready}
+        onClick={onAuthorize}
+        data-funded-primary-action
+        className="h-11 w-full rounded-xl bg-primary font-bold text-primary-foreground hover:bg-primary/85 disabled:bg-[oklch(0.471_0.0177_251.32)] disabled:text-background disabled:opacity-100"
+      >
+        {fundedActionLabel(runtime, journey)}
+      </Button>
+      <p className="mt-2 text-center font-mono text-[0.625rem] tracking-wide text-muted-foreground uppercase">
+        Disposable loopback Bitcoin regtest · local rails only
+      </p>
+    </section>
+  )
+}
+
+function FundedAmountField({
+  side,
+  ticker,
+  amount,
+  hint,
+}: {
+  side: "Send" | "Receive"
+  ticker: "LN" | "BTC"
+  amount: string
+  hint: string
+}) {
+  return (
+    <div className="relative h-24 rounded-xl bg-input ring-1 ring-foreground/15">
+      <span className="absolute top-2.5 left-3.5 text-[0.6875rem] font-bold text-muted-foreground uppercase">
+        {side}
+      </span>
+      <span className="absolute bottom-3 left-2 flex h-11 items-center gap-2 rounded-full border border-foreground/15 bg-card px-1.5 pr-3 font-semibold text-foreground uppercase">
+        <AssetIcon ticker={ticker} />
+        {ticker}
+      </span>
+      <span className="absolute top-7 right-3.5 text-[2rem] leading-none tracking-tight text-foreground">
+        {amount || "0"}
+      </span>
+      <span className="absolute right-3.5 bottom-1.5 max-w-[15rem] truncate text-[0.6875rem] text-muted-foreground">
+        {hint}
+      </span>
+    </div>
+  )
+}
+
+function VerificationTile({
+  label,
+  value,
+  detail,
+  verified,
+}: {
+  label: string
+  value: string
+  detail: string
+  verified: boolean
+}) {
+  return (
+    <div className="rounded-xl border border-foreground/15 bg-input/45 p-3">
+      <div className="flex items-center gap-1.5 font-semibold text-foreground">
+        <span
+          className={`size-2 rounded-full ${verified ? "bg-primary" : "bg-muted-foreground"}`}
+          aria-hidden="true"
+        />
+        {label}
+      </div>
+      <p className="mt-1 truncate font-mono text-[0.6875rem] text-foreground">
+        {value}
+      </p>
+      <p className="mt-0.5 text-[0.625rem] text-muted-foreground">{detail}</p>
+    </div>
+  )
+}
+
+function FundedEvidencePanel({ session }: { session: FundedSessionManifest }) {
+  return (
+    <Collapsible className="mt-3 rounded-xl border border-foreground/15 bg-input/45">
+      <CollapsibleTrigger className="group flex w-full items-center justify-between px-3 py-2.5 text-left text-xs font-semibold text-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring">
+        Public-safe evidence
+        <ChevronRightIcon className="size-3.5 transition-transform duration-200 group-data-panel-open:rotate-90 motion-reduce:transition-none" />
+      </CollapsibleTrigger>
+      <CollapsibleContent className="max-h-52 space-y-3 overflow-y-auto border-t border-foreground/10 px-3 py-3">
+        <EvidenceValue label="Requester key" value={session.requesterPubkey} />
+        {(["submarine", "reverse"] as const).map((name) => {
+          const journey = session.journeys[name]
+          if (!journey) return null
+          const bitcoin =
+            journey.requesterVerification.independentRailEvidence.find(
+              (item) => item.rail === "bitcoin"
+            )
+          const lightning =
+            journey.requesterVerification.independentRailEvidence.find(
+              (item) => item.rail === "lightning"
+            )
+          return (
+            <div
+              key={name}
+              className="space-y-1.5 border-t border-foreground/10 pt-3"
+            >
+              <p className="font-mono text-[0.625rem] tracking-wide text-primary uppercase">
+                {name}
+              </p>
+              <EvidenceValue
+                label="Provider key"
+                value={journey.providerPubkey}
+              />
+              <EvidenceValue label="Session ID" value={journey.sessionId} />
+              <EvidenceValue label="Order ID" value={journey.orderId} />
+              {journey.effectReceipt ? (
+                <>
+                  <EvidenceValue
+                    label="External ID"
+                    value={journey.effectReceipt.externalIdentifier}
+                  />
+                  <EvidenceValue
+                    label="Result digest"
+                    value={journey.effectReceipt.resultDigest}
+                  />
+                </>
+              ) : null}
+              {bitcoin?.rail === "bitcoin" ? (
+                <>
+                  <EvidenceValue
+                    label="Lockup txid"
+                    value={bitcoin.lockupTxid}
+                  />
+                  <EvidenceValue label="Claim txid" value={bitcoin.claimTxid} />
+                </>
+              ) : null}
+              {lightning?.rail === "lightning" ? (
+                <EvidenceValue
+                  label="Payment hash"
+                  value={lightning.paymentHash}
+                />
+              ) : null}
+            </div>
+          )
+        })}
+      </CollapsibleContent>
+    </Collapsible>
+  )
+}
+
+function EvidenceValue({ label, value }: { label: string; value: string }) {
+  const [copied, setCopied] = useState(false)
+  return (
+    <div className="flex items-center gap-2">
+      <span className="w-20 shrink-0 text-[0.625rem] text-muted-foreground">
+        {label}
+      </span>
+      <code
+        className="min-w-0 flex-1 truncate text-[0.625rem] text-foreground"
+        title={value}
+      >
+        {value}
+      </code>
+      <Button
+        type="button"
+        variant="ghost"
+        size="icon-xs"
+        aria-label={`Copy ${label}`}
+        onClick={() => {
+          void navigator.clipboard.writeText(value).then(() => {
+            setCopied(true)
+            setTimeout(() => setCopied(false), 1_500)
+          })
+        }}
+        className="size-6 text-muted-foreground hover:text-foreground"
+      >
+        {copied ? (
+          <CheckIcon className="size-3" />
+        ) : (
+          <CopyIcon className="size-3" />
+        )}
+      </Button>
+    </div>
+  )
+}
+
+function fundedSession(
+  runtime: FundedRuntimeState
+): FundedSessionManifest | null {
+  return "session" in runtime ? runtime.session : null
+}
+
+function verificationLabel(journey: FundedJourney | undefined): string {
+  if (!journey) return "waiting"
+  return {
+    effect_authorized: "effect authorized",
+    effect_admitted: "effect admitted",
+    terminal_rail_evidence_verified: "BTC + LN verified",
+  }[journey.requesterVerification.state]
+}
+
+function fundedActionLabel(
+  runtime: FundedRuntimeState,
+  journey: FundedJourney | undefined
+): string {
+  if (runtime.state === "authorizing") return "Authorizing exact effect…"
+  if (runtime.state === "watching") return "Verifying local rail evidence…"
+  if (runtime.state === "complete") return "Both journeys verified"
+  if (runtime.state === "error") return "Funded mode stopped"
+  if (runtime.state !== "ready" || !journey?.pendingEffect) {
+    return "Waiting for Immortal"
+  }
+  return journey.pendingEffect.method === "broadcast_bitcoin_funding"
+    ? "Authorize Bitcoin funding broadcast"
+    : "Authorize Lightning invoice payment"
 }
 
 function LifecyclePanel({
@@ -642,9 +986,19 @@ function QuoteCountdown({ deadline }: { deadline: number }) {
 }
 
 function RuntimePopover({
+  mode,
+  onModeChange,
+  modeLocked,
+  fundedConfig,
+  fundedRuntime,
   status,
   provenance,
 }: {
+  mode: SwapMode
+  onModeChange: (mode: SwapMode) => void
+  modeLocked: boolean
+  fundedConfig: FundedRegtestConfigResult
+  fundedRuntime: FundedRuntimeState
   status: ImmortalRuntimeStatus
   provenance: ReturnType<typeof useImmortalRuntime>["provenance"]
 }) {
@@ -663,16 +1017,54 @@ function RuntimePopover({
         <PopoverHeader>
           <PopoverTitle>Swap settings</PopoverTitle>
           <PopoverDescription>
-            Immortal runs in this browser and connects straight to the
-            configured relay.
+            Choose the local Immortal demonstration boundary explicitly.
           </PopoverDescription>
         </PopoverHeader>
-        <RuntimeDisclosure status={status} />
+        <label
+          className="mb-1 block text-xs font-medium text-foreground"
+          htmlFor="swap-mode"
+        >
+          Swap mode
+        </label>
+        <Select
+          value={mode}
+          disabled={modeLocked}
+          onValueChange={(value) => {
+            if (value === "no_spend" || value === "funded_regtest") {
+              onModeChange(value)
+            }
+          }}
+        >
+          <SelectTrigger id="swap-mode" className="mb-2 w-full bg-input">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="no_spend">Demo · No-spend</SelectItem>
+            <SelectItem
+              value="funded_regtest"
+              disabled={fundedConfig.state !== "ready"}
+            >
+              Regtest · Funded
+            </SelectItem>
+          </SelectContent>
+        </Select>
+        {mode === "no_spend" ? (
+          <RuntimeDisclosure status={status} />
+        ) : (
+          <FundedRuntimeDisclosure runtime={fundedRuntime} />
+        )}
+        {fundedConfig.state === "unavailable" ? (
+          <p className="mb-2 text-[0.6875rem] text-muted-foreground">
+            Funded mode: {fundedConfig.detail}
+          </p>
+        ) : null}
         <div className="flex items-center gap-2 rounded-lg bg-input p-3 text-xs text-muted-foreground">
           <ShieldCheckIcon className="size-4 shrink-0 text-primary" />
-          Verify route and recovery paths before funding
+          {mode === "no_spend"
+            ? "Verify route and recovery paths before funding"
+            : "Only the displayed engine effect can be authorized"}
         </div>
-        {provenance ? (
+        {mode === "no_spend" && provenance ? (
           <dl className="mt-2 space-y-1 rounded-lg border border-foreground/10 p-3 font-mono text-[0.625rem] text-muted-foreground">
             <div className="flex justify-between gap-3">
               <dt>ENGINE</dt>
@@ -696,6 +1088,34 @@ function RuntimePopover({
         ) : null}
       </PopoverContent>
     </Popover>
+  )
+}
+
+function FundedRuntimeDisclosure({ runtime }: { runtime: FundedRuntimeState }) {
+  const ready = runtime.state === "ready" || runtime.state === "complete"
+  const danger = runtime.state === "error" || runtime.state === "unavailable"
+  return (
+    <div
+      data-funded-runtime-state={runtime.state}
+      role="status"
+      aria-live="polite"
+      className="mb-2 rounded-lg border border-foreground/10 bg-input p-3 text-xs"
+    >
+      <div className="flex items-center gap-2 font-semibold text-foreground">
+        <span
+          className={`size-2 rounded-full ${
+            ready
+              ? "bg-primary"
+              : danger
+                ? "bg-destructive"
+                : "bg-muted-foreground"
+          }`}
+          aria-hidden="true"
+        />
+        Regtest bridge · {runtime.state}
+      </div>
+      <p className="mt-1 text-muted-foreground">{runtime.detail}</p>
+    </div>
   )
 }
 

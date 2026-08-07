@@ -139,3 +139,56 @@ settlement-overclaim refusal, concurrent replay, effect idempotency, and
 secret-material refusal. The real-topology browser suite restarts the selected
 provider and reloads at durable phases before requiring all eight milestones,
 the exact terminal copy, and a stable terminal reload.
+
+## Optional funded-regtest mode
+
+The gear menu always starts in `Demo · No-spend`. `Regtest · Funded` appears
+only when the Next.js process receives a current, strictly parsed launch file
+through `IMMORTAL_FUNDED_DEMO_MANIFEST`. The launch file must pin this
+checkout's Immortal source, requester API, WASM, browser ABI, and funded
+adapter contract digests. Its adapter and browser origins must be exact
+numeric IPv4 loopback HTTP origins; it expires within one hour. Bazaar refuses
+mainnet, LAN or public hosts, `localhost`, credentials, paths, unknown fields,
+stale files, changed digests, and incompatible ABI versions before enabling
+the control.
+
+This mode talks from the browser directly to Immortal's development-only
+funded adapter. The adapter has no node credentials and exposes no wallet RPC.
+For each submarine BTC→LN and reverse LN→BTC journey, Bazaar can POST only the
+exact bounded effect already authorized by `immortal-client`: its session,
+Order, effect and idempotency IDs, closed rail method, regtest network, and
+amount. Reload and reconnect retries submit the same bytes. Immortal's durable
+receipt returns identically, including after adapter replacement, while any
+changed field fails closed before another payment or broadcast.
+
+The card deliberately separates two claims:
+
+- **Provider Status** is the signed counterparty claim and is always marked
+  unverified by Bazaar.
+- **Local rails** become verified only when the Immortal requester reports
+  both its local Bitcoin transaction evidence and Lightning payment hash.
+
+The evidence disclosure contains only public keys, session and Order IDs,
+effect receipt identifiers and digests, Bitcoin txids, and Lightning payment
+hashes. It never receives invoices, raw transactions, keys, seeds, preimages,
+macaroons, credentials, or node endpoints. The UI does not present a provider
+claim as locally verified completion.
+
+### Run the real disposable demo
+
+Docker Desktop or a compatible Compose runtime must be running. The repeatable
+acceptance command provisions Immortal's disposable Bitcoin Core, Lightning,
+relay, provider, and Postgres topology; starts its loopback browser adapter;
+drives both funded journeys in Chrome; checks exact receipt replay and page
+reload recovery; then writes a public-safe receipt and tears down only the
+owned topology:
+
+```sh
+IMMORTAL_REPO=~/work/immortal pnpm test:funded
+```
+
+The receipt is written to `target/funded-regtest-receipt.json` by default. Set
+`BAZAAR_FUNDED_RECEIPT` to choose another output path. The companion Immortal
+gate `scripts/test-browser-demo-funded.sh` additionally replaces the real
+adapter process mid-run and proves its prior receipt is returned exactly after
+restart. Neither command is a production or mainnet configuration.

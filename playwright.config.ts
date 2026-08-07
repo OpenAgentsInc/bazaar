@@ -5,9 +5,11 @@ import { defineConfig } from "@playwright/test"
 
 const root = dirname(fileURLToPath(import.meta.url))
 const externalManifest = process.env.IMMORTAL_DEMO_MANIFEST
+const externalFundedManifest = process.env.IMMORTAL_FUNDED_DEMO_MANIFEST
 
 export default defineConfig({
   testDir: "tests/browser",
+  testIgnore: "funded-regtest-real.spec.ts",
   timeout: 60_000,
   expect: { timeout: 10_000 },
   fullyParallel: false,
@@ -18,6 +20,16 @@ export default defineConfig({
     trace: "retain-on-failure",
   },
   webServer: [
+    ...(externalFundedManifest
+      ? []
+      : [
+          {
+            command: "node tests/support/fake-funded-adapter.mjs",
+            url: "http://127.0.0.1:18183/health",
+            reuseExistingServer: false,
+            timeout: 15_000,
+          },
+        ]),
     ...(externalManifest
       ? []
       : [
@@ -38,6 +50,9 @@ export default defineConfig({
         IMMORTAL_DEMO_MANIFEST:
           externalManifest ??
           resolve(root, "tests/fixtures/no-spend-manifest.json"),
+        IMMORTAL_FUNDED_DEMO_MANIFEST:
+          externalFundedManifest ??
+          resolve(root, "tmp/funded-test-launch.json"),
       },
     },
   ],

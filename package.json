@@ -12,6 +12,7 @@
     "typecheck": "tsc --noEmit",
     "test": "tsx --test lib/**/*.test.ts",
     "test:browser": "playwright test",
+    "test:funded": "scripts/run-funded-regtest-acceptance.sh",
     "build:nip-mkt": "esbuild vendor/nip-mkt/src/index.ts --bundle --format=esm --platform=browser --target=es2022 --external:effect --outfile=vendor/nip-mkt/dist/index.js",
     "verify:immortal-artifact": "node scripts/verify-immortal-artifact.mjs",
     "check": "pnpm build:nip-mkt && pnpm verify:immortal-artifact && pnpm lint && pnpm typecheck && pnpm test && pnpm build"

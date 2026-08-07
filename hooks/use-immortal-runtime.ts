@@ -18,7 +18,10 @@ import type {
   QuoteState,
 } from "@/lib/immortal/market"
 
-export function useImmortalRuntime(config: ImmortalConfigResult) {
+export function useImmortalRuntime(
+  config: ImmortalConfigResult,
+  enabled = true
+) {
   const runtimeRef = useRef<ImmortalBrowserRuntime | null>(null)
   const [status, setStatus] = useState<ImmortalRuntimeStatus>(() =>
     config.state === "unavailable"
@@ -49,11 +52,36 @@ export function useImmortalRuntime(config: ImmortalConfigResult) {
   useEffect(() => {
     let disposed = false
 
-    if (config.state === "unavailable") {
+    runtimeRef.current?.stop()
+    runtimeRef.current = null
+
+    if (!enabled) {
       return () => {
         disposed = true
       }
     }
+
+    if (config.state === "unavailable") {
+      queueMicrotask(() => {
+        if (disposed) return
+        setStatus({
+          state: "unavailable",
+          code: config.code,
+          detail: config.detail,
+        })
+      })
+      return () => {
+        disposed = true
+      }
+    }
+
+    queueMicrotask(() => {
+      if (disposed) return
+      setStatus({
+        state: "loading",
+        detail: "Loading the pinned Immortal requester engine…",
+      })
+    })
 
     void import("@/lib/immortal/runtime")
       .then(({ ImmortalBrowserRuntime }) => {
@@ -85,7 +113,7 @@ export function useImmortalRuntime(config: ImmortalConfigResult) {
       runtimeRef.current?.stop()
       runtimeRef.current = null
     }
-  }, [config])
+  }, [config, enabled])
 
   const requestQuotes = useCallback((input: QuoteRequestInput) => {
     return runtimeRef.current?.requestQuotes(input) ?? Promise.resolve()
