@@ -22,6 +22,9 @@ const config: StorybookConfig = {
           "@/hooks/use-funded-regtest": fileURLToPath(
             new URL("./mocks/use-funded-regtest.ts", import.meta.url)
           ),
+          "@/hooks/use-panorama-network": fileURLToPath(
+            new URL("./mocks/use-panorama-network.ts", import.meta.url)
+          ),
         },
       },
     })

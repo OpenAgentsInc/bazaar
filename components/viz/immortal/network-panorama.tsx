@@ -22,16 +22,27 @@ import {
 } from "@/components/viz/core"
 import { cn } from "@/lib/utils"
 
+/**
+ * Trust tier for a panorama node. "pinned" nodes come from the signed launch
+ * manifest (full color, verified); "discovered" nodes merely published valid
+ * market heads on a connected relay — rendered dimmed with an explicit
+ * "unpinned" suffix (never color-only), and never routable from the swap
+ * card. Absent means pinned (backwards compatible).
+ */
+export type PanoramaTrust = "pinned" | "discovered"
+
 export interface PanoramaRelay {
   id: string
   label: string
   state?: VizNodeState
+  trust?: PanoramaTrust
 }
 
 export interface PanoramaProvider {
   id: string
   label: string
   state?: VizNodeState
+  trust?: PanoramaTrust
   /** Relay ids this provider publishes offerings on. */
   relayIds: readonly string[]
   feeBps: number
@@ -83,6 +94,15 @@ function seededRandom(seed: number): () => number {
     t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t
     return ((t ^ (t >>> 14)) >>> 0) / 4294967296
   }
+}
+
+// Discovered-tier rendering: dimmed to ~0.55 and an explicit textual
+// "unpinned" suffix carried into the label, the SVG <title>, and the
+// sr-only mirror — the tier is never encoded by opacity alone.
+const DISCOVERED_OPACITY = 0.55
+
+export function trustLabel(label: string, trust?: PanoramaTrust): string {
+  return trust === "discovered" ? `${label} · unpinned` : label
 }
 
 export function formatSats(n: number): string {
@@ -452,17 +472,22 @@ function PanoramaBody({
       {/* Relays. */}
       {network.relays.map((relay) => {
         const at = layout.relayPos.get(relay.id)!
+        const discovered = relay.trust === "discovered"
         return (
-          <VizNode
+          <g
             key={relay.id}
-            x={at.x}
-            y={at.y}
-            shape="circle"
-            r={13}
-            role="relay"
-            state={relay.state ?? "ready"}
-            label={relay.label}
-          />
+            opacity={discovered ? DISCOVERED_OPACITY : 1}
+          >
+            <VizNode
+              x={at.x}
+              y={at.y}
+              shape="circle"
+              r={13}
+              role="relay"
+              state={relay.state ?? "ready"}
+              label={trustLabel(relay.label, relay.trust)}
+            />
+          </g>
         )
       })}
 
@@ -475,8 +500,12 @@ function PanoramaBody({
             ? 9 + Math.sqrt(provider.volumeSat24h / maxVolume) * 9
             : 11
         const labelSide = at.x >= CX ? 1 : -1
+        const discovered = provider.trust === "discovered"
         return (
-          <g key={provider.id}>
+          <g
+            key={provider.id}
+            opacity={discovered ? DISCOVERED_OPACITY : 1}
+          >
             <VizNode
               x={at.x}
               y={at.y}
@@ -484,7 +513,7 @@ function PanoramaBody({
               r={r}
               role="provider"
               state={provider.state ?? "ready"}
-              label={provider.label}
+              label={trustLabel(provider.label, provider.trust)}
             />
             {overlay === "volume" && topProviderIds.has(provider.id) ? (
               <text
@@ -655,12 +684,26 @@ export function ImmortalNetworkPanorama({
         <dd>{formatSats(network.stats.volumeSat24h)}</dd>
         <dt>Operator fees in 24h</dt>
         <dd>{formatSats(network.stats.operatorFeeSat24h)}</dd>
+        {network.relays.map((relay) => (
+          <React.Fragment key={relay.id}>
+            <dt>{trustLabel(relay.label, relay.trust)}</dt>
+            <dd>
+              relay · {relay.state ?? "ready"} ·{" "}
+              {relay.trust === "discovered"
+                ? "unpinned (not in the signed manifest)"
+                : "pinned by the signed manifest"}
+            </dd>
+          </React.Fragment>
+        ))}
         {network.providers.map((provider) => (
           <React.Fragment key={provider.id}>
-            <dt>{provider.label}</dt>
+            <dt>{trustLabel(provider.label, provider.trust)}</dt>
             <dd>
               {provider.state ?? "ready"} · {provider.swaps24h} swaps ·{" "}
               {formatSats(provider.volumeSat24h)} · fee {provider.feeBps} bps
+              {provider.trust === "discovered"
+                ? " · unpinned (not in the signed manifest)"
+                : ""}
             </dd>
           </React.Fragment>
         ))}
