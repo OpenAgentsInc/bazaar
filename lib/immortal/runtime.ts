@@ -17,6 +17,7 @@ import {
   IMMORTAL_ARTIFACT,
   type ImmortalConfigResult,
   type ImmortalDemoConfig,
+  type ImmortalDemoSwapType,
   type ImmortalRuntimeProvenance,
   type ImmortalRuntimeStatus,
 } from "./config"
@@ -787,6 +788,7 @@ export class ImmortalBrowserRuntime {
               route,
               input
             ),
+            logicalRequestId,
             now
           ),
         })
@@ -1404,6 +1406,7 @@ function createRfqProfile(
   route: MarketRoute,
   input: QuoteRequestInput,
   template: ImmortalDemoConfig["requestContract"]["templates"][number],
+  logicalRequestId: string,
   now: number
 ): Record<string, unknown> {
   const constraints: Record<string, unknown> = {
@@ -1417,7 +1420,12 @@ function createRfqProfile(
     firm_quote_required: true,
     input_amount: input.inputAmount,
     maximum_total_fee: input.inputAmount,
-    payment_hash: input.destination.paymentHash ?? template.paymentHash,
+    payment_hash: publicPreviewPaymentHash({
+      swapType: route.swapType,
+      destinationPaymentHash: input.destination.paymentHash,
+      templatePaymentHash: template.paymentHash,
+      logicalRequestId,
+    }),
     requester_public_keys: template.requesterPublicKeys.map((key) => ({
       leg_id: key.legId,
       path: key.path,
@@ -1436,6 +1444,25 @@ function createRfqProfile(
       ? { invoice: input.destination.canonicalValue }
       : {}),
   }
+}
+
+export function publicPreviewPaymentHash({
+  swapType,
+  destinationPaymentHash,
+  templatePaymentHash,
+  logicalRequestId,
+}: {
+  readonly swapType: ImmortalDemoSwapType
+  readonly destinationPaymentHash: string | null
+  readonly templatePaymentHash: string
+  readonly logicalRequestId: string
+}): string {
+  if (destinationPaymentHash) return destinationPaymentHash
+  // A reverse RFQ asks the provider to create a hold invoice. Reusing the
+  // static manifest template hash causes CLN to recover a stale invoice after
+  // the first preview. The per-request digest is already shared by every
+  // provider lane, random for each quote collection, and never funds a swap.
+  return swapType === "reverse" ? logicalRequestId : templatePaymentHash
 }
 
 function sessionConfig(

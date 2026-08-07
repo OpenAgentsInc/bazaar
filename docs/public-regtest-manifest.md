@@ -193,3 +193,8 @@ authorities, and writes a versioned public-safe receipt. The receipt scanner
 rejects capabilities, destinations, invoices, custody fields, and raw
 transactions. Bazaar deliberately has no analytics SDK; browser state and the
 acceptance receipt are the only client-side operational records.
+
+Reverse quote previews use a fresh per-collection payment hash shared across
+the two provider lanes. It prevents CLN from recovering a stale hold invoice
+when a visitor refreshes quotes; the private funded worker still creates and
+retains the real preimage for the selected demo journey.
