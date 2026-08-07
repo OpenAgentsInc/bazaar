@@ -2,6 +2,7 @@ import { Effect, Schema } from "effect"
 import {
   serializeSignedEvent,
   unwrapPrivateRecord,
+  validatePublicHead,
   wrapPrivateRecordCopies,
   finalizeEvent,
   verifyEvent,
@@ -16,10 +17,15 @@ import {
   verifySignedRequesterRecord,
   type ImmortalBrowserClient,
   type ImmortalNostrEvent,
+  type ImmortalSessionDeliveryInput,
   type ImmortalSignedRecordDelivery,
   type ImmortalSigningRequest,
 } from "@/vendor/mkt-swp/immortal-browser-abi"
-import type { DemoIdentity, StoredSignedRecord, StoredValidatedDelivery } from "./store"
+import type {
+  DemoIdentity,
+  StoredSignedRecord,
+  StoredValidatedDelivery,
+} from "./store"
 import { bytesToHex, hexToBytes } from "./store"
 import type { ImmortalContractIdentity } from "./config"
 
@@ -35,11 +41,7 @@ const PRIVATE_PROFILE_SUPPORT = [
 ] as const
 
 export type RelayConnectionState =
-  | "connecting"
-  | "authenticating"
-  | "snapshot"
-  | "live"
-  | "closed"
+  "connecting" | "authenticating" | "snapshot" | "live" | "closed"
 
 export interface RelayInformation {
   readonly software: "https://github.com/OpenAgentsInc/immortal"
@@ -120,7 +122,12 @@ export class ImmortalRelayTransport {
       void this.handleMessage(message.data).catch((cause) => this.fail(cause))
     })
     socket.addEventListener("error", () =>
-      this.fail(new ImmortalRelayError("relay_unavailable", "The relay WebSocket failed."))
+      this.fail(
+        new ImmortalRelayError(
+          "relay_unavailable",
+          "The relay WebSocket failed."
+        )
+      )
     )
     socket.addEventListener("close", () => {
       this.setState("closed")
@@ -139,8 +146,12 @@ export class ImmortalRelayTransport {
     return information
   }
 
-  async publish(event: Event): Promise<void> {
-    if (!verifyEvent(event)) {
+  async publish(event: Event | GiftWrappedEvent): Promise<void> {
+    const wireEvent: Event = {
+      ...event,
+      tags: event.tags.map((tag) => [...tag]),
+    }
+    if (!verifyEvent(wireEvent)) {
       throw new ImmortalRelayError(
         "relay_publish_failed",
         "Refusing to publish a malformed signed event."
@@ -149,7 +160,7 @@ export class ImmortalRelayTransport {
     const acknowledgement = new Promise<void>((resolve, reject) => {
       this.acknowledgements.set(event.id, { resolve, reject })
     })
-    this.send(["EVENT", event])
+    this.send(["EVENT", wireEvent])
     await withTimeout(
       acknowledgement,
       RELAY_TIMEOUT_MS,
@@ -211,7 +222,9 @@ export class ImmortalRelayTransport {
       case "CLOSED":
         throw new ImmortalRelayError(
           "relay_protocol_error",
-          typeof message[2] === "string" ? message[2] : "The relay closed a subscription."
+          typeof message[2] === "string"
+            ? message[2]
+            : "The relay closed a subscription."
         )
       case "NOTICE":
         return
@@ -248,11 +261,17 @@ export class ImmortalRelayTransport {
       this.acknowledgements.set(event.id, { resolve, reject })
     })
     this.send(["AUTH", event])
-    await withTimeout(accepted, RELAY_TIMEOUT_MS, "The relay refused NIP-42 authentication.")
+    await withTimeout(
+      accepted,
+      RELAY_TIMEOUT_MS,
+      "The relay refused NIP-42 authentication."
+    )
       .catch((cause) => {
         throw new ImmortalRelayError(
           "relay_auth_failed",
-          cause instanceof Error ? cause.message : "The relay refused authentication."
+          cause instanceof Error
+            ? cause.message
+            : "The relay refused authentication."
         )
       })
       .finally(() => this.acknowledgements.delete(event.id))
@@ -285,7 +304,9 @@ export class ImmortalRelayTransport {
       pending.reject(
         new ImmortalRelayError(
           "relay_publish_failed",
-          typeof message[3] === "string" ? message[3] : "The relay rejected the event."
+          typeof message[3] === "string"
+            ? message[3]
+            : "The relay rejected the event."
         )
       )
     }
@@ -294,7 +315,10 @@ export class ImmortalRelayTransport {
   private async handleEvent(message: unknown[]): Promise<void> {
     const subscriptionId = message[1]
     const value = message[2]
-    if (typeof subscriptionId !== "string" || !this.subscriptions.has(subscriptionId)) {
+    if (
+      typeof subscriptionId !== "string" ||
+      !this.subscriptions.has(subscriptionId)
+    ) {
       return
     }
     if (!isEvent(value) || !verifyEvent(value)) {
@@ -318,7 +342,10 @@ export class ImmortalRelayTransport {
     const subscription = this.subscriptions.get(subscriptionId)
     if (!subscription || subscription.phase === "live") return
     this.subscriptions.set(subscriptionId, { ...subscription, phase: "live" })
-    if ([...this.subscriptions.values()].some((entry) => entry.phase !== "live")) return
+    if (
+      [...this.subscriptions.values()].some((entry) => entry.phase !== "live")
+    )
+      return
 
     const publicEvents: Event[] = []
     const privateEvents: Event[] = []
@@ -347,7 +374,10 @@ export class ImmortalRelayTransport {
     const error =
       cause instanceof Error
         ? cause
-        : new ImmortalRelayError("relay_protocol_error", "The relay operation failed.")
+        : new ImmortalRelayError(
+            "relay_protocol_error",
+            "The relay operation failed."
+          )
     this.readyReject?.(error)
     this.socket?.close()
   }
@@ -412,6 +442,7 @@ export async function validatePrivateDelivery(
   receivedAt = Math.floor(Date.now() / 1_000)
 ): Promise<{
   readonly unwrapped: DeliveredPrivateRecord
+  readonly engineInput: ImmortalSessionDeliveryInput
   readonly engineDelivery: ImmortalSignedRecordDelivery
   readonly signedRecord: StoredSignedRecord
   readonly storedDelivery: StoredValidatedDelivery
@@ -424,7 +455,10 @@ export async function validatePrivateDelivery(
         wrap as GiftWrappedEvent,
         hexToBytes(identity.privateKeyHex),
         PRIVATE_PROFILE_SUPPORT,
-        { receivedAt, sourceProvenance: ["nip42_authenticated", "nip59_verified"] }
+        {
+          receivedAt,
+          sourceProvenance: ["nip42_authenticated", "nip59_verified"],
+        }
       )
     )
   } catch {
@@ -433,12 +467,13 @@ export async function validatePrivateDelivery(
       "A private relay record failed NIP-59 or NIP-MKT validation."
     )
   }
+  const engineInput: ImmortalSessionDeliveryInput = {
+    raw_signed_event_hex: bytesToHex(new TextEncoder().encode(unwrapped.raw)),
+    observed_at: receivedAt,
+    provenance: "direct",
+  }
   const engineDelivery = await Effect.runPromise(
-    validateImmortalDelivery(client, {
-      raw_signed_event_hex: bytesToHex(new TextEncoder().encode(unwrapped.raw)),
-      observed_at: receivedAt,
-      provenance: "direct",
-    })
+    validateImmortalDelivery(client, engineInput)
   )
   const sessionId = tagValue(unwrapped.event, "session")
   if (!/^[0-9a-f]{64}$/.test(sessionId)) {
@@ -447,9 +482,13 @@ export async function validatePrivateDelivery(
       "The private record has no valid session binding."
     )
   }
-  const source = unwrapped.event.pubkey === identity.pubkey ? "sender_recovery" : "counterparty"
+  const source =
+    unwrapped.event.pubkey === identity.pubkey
+      ? "sender_recovery"
+      : "counterparty"
   return {
     unwrapped,
+    engineInput,
     engineDelivery,
     sessionId,
     signedRecord: {
@@ -465,13 +504,85 @@ export async function validatePrivateDelivery(
     storedDelivery: {
       eventId: unwrapped.event.id,
       wrapId: unwrapped.wrapId,
+      rawWrapEvent: JSON.stringify(wrap),
       sealId: unwrapped.sealId,
       rumorId: unwrapped.rumorId,
       receivedAt,
       senderPubkey: unwrapped.event.pubkey,
       source,
+      engineInput,
       engineDelivery,
     },
+  }
+}
+
+export async function validateLocalRequesterDelivery(
+  client: ImmortalBrowserClient,
+  event: Event,
+  observedAt = Math.floor(Date.now() / 1_000)
+): Promise<{
+  readonly engineInput: ImmortalSessionDeliveryInput
+  readonly engineDelivery: ImmortalSignedRecordDelivery
+  readonly signedRecord: StoredSignedRecord
+  readonly storedDelivery: StoredValidatedDelivery
+}> {
+  if (!verifyEvent(event)) {
+    throw new ImmortalRelayError(
+      "private_delivery_invalid",
+      "The locally signed requester record is invalid."
+    )
+  }
+  const raw = serializeSignedEvent(event)
+  const engineInput: ImmortalSessionDeliveryInput = {
+    raw_signed_event_hex: bytesToHex(new TextEncoder().encode(raw)),
+    observed_at: observedAt,
+    provenance: "locally_signed",
+  }
+  const engineDelivery = await Effect.runPromise(
+    validateImmortalDelivery(client, engineInput)
+  )
+  return {
+    engineInput,
+    engineDelivery,
+    signedRecord: {
+      id: event.id,
+      pubkey: event.pubkey,
+      kind: event.kind,
+      createdAt: event.created_at,
+      rawSignedEvent: raw,
+      rawWrapEvent: null,
+      wrapEventId: null,
+      provenance: "locally_signed",
+    },
+    storedDelivery: {
+      eventId: event.id,
+      wrapId: null,
+      rawWrapEvent: null,
+      sealId: null,
+      rumorId: null,
+      receivedAt: observedAt,
+      senderPubkey: event.pubkey,
+      source: "direct",
+      engineInput,
+      engineDelivery,
+    },
+  }
+}
+
+export function validatePublicProviderProfile(event: Event): Event {
+  if (event.kind !== 39_600 || !verifyEvent(event)) {
+    throw new ImmortalRelayError(
+      "relay_protocol_error",
+      "The relay Provider Profile is malformed or unsigned."
+    )
+  }
+  try {
+    return validatePublicHead(event)
+  } catch {
+    throw new ImmortalRelayError(
+      "relay_protocol_error",
+      "The relay Provider Profile violates the pinned NIP-MKT contract."
+    )
   }
 }
 
@@ -485,10 +596,11 @@ export async function validatePublicOffering(
       "The relay Offering is malformed or unsigned."
     )
   }
-  const { validateImmortalOffering } = await import(
-    "@/vendor/mkt-swp/immortal-browser-abi"
+  const { validateImmortalOffering } =
+    await import("@/vendor/mkt-swp/immortal-browser-abi")
+  return Effect.runPromise(
+    validateImmortalOffering(client, jsonValue({ event }))
   )
-  return Effect.runPromise(validateImmortalOffering(client, jsonValue({ event })))
 }
 
 async function fetchRelayInformation(
@@ -510,7 +622,10 @@ async function fetchRelayInformation(
       "The relay NIP-11 document is unavailable."
     )
   }
-  if (!response.ok || !response.headers.get("content-type")?.includes("application/nostr+json")) {
+  if (
+    !response.ok ||
+    !response.headers.get("content-type")?.includes("application/nostr+json")
+  ) {
     throw new ImmortalRelayError(
       "nip11_unavailable",
       "The relay did not return a valid NIP-11 response."
@@ -553,7 +668,9 @@ function isEvent(value: unknown): value is Event {
 }
 
 function tagValue(event: Event, name: string): string {
-  const matches = event.tags.filter((tag) => tag[0] === name && tag.length === 2)
+  const matches = event.tags.filter(
+    (tag) => tag[0] === name && tag.length === 2
+  )
   return matches.length === 1 ? (matches[0]?.[1] ?? "") : ""
 }
 

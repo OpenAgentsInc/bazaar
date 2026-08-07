@@ -9,13 +9,13 @@ const paths = {
 }
 
 const expected = {
-  sourceRevision: "d62a4f7c6c34a11d191fe78316fd8d4ce4da1d34",
+  sourceRevision: "69a78231ffeae5a78fe45de9aba122db00178953",
   requesterApiSha256:
     "bf52fda5f4d349fbbe195e4cff58af59a3930e1ee8ab1f1413b6338ba44fb3a8",
-  wasmSha256: "aee4e846a1bfb331ab3896c246e6d93ea1fcb2ef82adb4caf229760fc9cbc088",
-  wasmBytes: 3_735_499,
+  wasmSha256: "7cd00d973892ed90348c1101447c05a8194c3258a3bb5e6fd92dd0fc62130505",
+  wasmBytes: 3_736_659,
   boundarySha256:
-    "bf881d40b212367ac54186b3405169dae32b5985c0fa9b4e02d397c505cc0942",
+    "5acfcd3e7cccc237cb63874d2d16bc82cfff1aa17626e63fd8191f240840f0f3",
   fixtureSha256:
     "2a25819d6277f7e182ff5a10c80f00c403fe61ccbc98f20e7971e527b8ac4400",
 }

@@ -5,6 +5,7 @@ import {
   ImmortalSessionStore,
   ImmortalStoreError,
   MemoryStringKv,
+  engineInputsForSession,
   loadOrCreateDemoIdentity,
   type ProviderRoute,
   type StoredSignedRecord,
@@ -40,14 +41,24 @@ function delivery(observedAt = 1_700_000_001): StoredValidatedDelivery {
   return {
     eventId: EVENT_ID,
     wrapId: "66".repeat(32),
+    rawWrapEvent: '{"kind":1059,"copy":"counterparty"}',
     sealId: "77".repeat(32),
     rumorId: "88".repeat(32),
     receivedAt: observedAt,
     senderPubkey: PROVIDER,
     source: "counterparty",
+    engineInput: {
+      raw_signed_event_hex: "7b7d",
+      observed_at: observedAt,
+      provenance: "direct",
+    },
     engineDelivery: {
       event_id: EVENT_ID,
       raw_signed_event: [123, 125],
+      raw_wrap_event: null,
+      wrap_event_id: null,
+      sender_pubkey: PROVIDER,
+      observed_at: observedAt,
       provenance: "direct",
     },
   }
@@ -105,18 +116,68 @@ test("same signed ID or delivery provenance with changed bytes fails closed", as
   await assert.rejects(
     store.appendDelivery(SESSION_ID, record('{"changed":true}'), delivery()),
     (cause) =>
-      cause instanceof ImmortalStoreError && cause.code === "signed_record_conflict"
+      cause instanceof ImmortalStoreError &&
+      cause.code === "signed_record_conflict"
   )
   await assert.rejects(
     store.appendDelivery(SESSION_ID, record(), delivery(1_700_000_002)),
     (cause) =>
-      cause instanceof ImmortalStoreError && cause.code === "signed_record_conflict"
+      cause instanceof ImmortalStoreError &&
+      cause.code === "signed_record_conflict"
+  )
+})
+
+test("one signed record retains both exact NIP-59 delivery copies", async () => {
+  const { store } = await createStore()
+  await store.appendDelivery(SESSION_ID, record(), delivery())
+  await store.appendDelivery(
+    SESSION_ID,
+    {
+      ...record(),
+      rawWrapEvent: '{"kind":1059,"copy":"sender-recovery"}',
+      wrapEventId: "99".repeat(32),
+      provenance: "locally_signed",
+    },
+    {
+      ...delivery(),
+      wrapId: "99".repeat(32),
+      rawWrapEvent: '{"kind":1059,"copy":"sender-recovery"}',
+      sealId: "aa".repeat(32),
+      rumorId: "bb".repeat(32),
+      source: "sender_recovery",
+    }
+  )
+
+  const session = await store.get(SESSION_ID)
+  assert.equal(session.signedRecords.length, 1)
+  assert.equal(session.validatedDeliveries.length, 2)
+  assert.notEqual(
+    session.validatedDeliveries[0]?.rawWrapEvent,
+    session.validatedDeliveries[1]?.rawWrapEvent
+  )
+  assert.deepEqual(engineInputsForSession(session), [delivery().engineInput])
+})
+
+test("engine input projection fails closed without delivery evidence", async () => {
+  const { store } = await createStore()
+  const session = await store.appendDelivery(SESSION_ID, record(), delivery())
+  assert.throws(
+    () =>
+      engineInputsForSession({
+        ...session,
+        validatedDeliveries: [],
+      }),
+    (cause) =>
+      cause instanceof ImmortalStoreError && cause.code === "session_invalid"
   )
 })
 
 test("external effects replay their exact durable result and reject rebinding", async () => {
   const { kv, store } = await createStore()
-  const request = { operation: "broadcast", transaction_sha256: "aa".repeat(32) }
+  const request = {
+    operation: "broadcast",
+    transaction_sha256: "aa".repeat(32),
+  }
   const result = { transaction_id: "bb".repeat(32), accepted: true }
 
   await Promise.all([
@@ -127,16 +188,21 @@ test("external effects replay their exact durable result and reject rebinding", 
   await store.recordEffectResult(SESSION_ID, EFFECT_ID, result, "regtest:tx")
 
   const restored = new ImmortalSessionStore(kv)
-  assert.deepEqual(await restored.priorEffectResult(SESSION_ID, EFFECT_ID, request), {
-    digest: (await restored.get(SESSION_ID)).effects[0]?.result?.digest,
-    value: result,
-    externalId: "regtest:tx",
-    observedAt: (await restored.get(SESSION_ID)).effects[0]?.result?.observedAt,
-  })
+  assert.deepEqual(
+    await restored.priorEffectResult(SESSION_ID, EFFECT_ID, request),
+    {
+      digest: (await restored.get(SESSION_ID)).effects[0]?.result?.digest,
+      value: result,
+      externalId: "regtest:tx",
+      observedAt: (await restored.get(SESSION_ID)).effects[0]?.result
+        ?.observedAt,
+    }
+  )
   await assert.rejects(
     restored.priorEffectResult(SESSION_ID, EFFECT_ID, { operation: "refund" }),
     (cause) =>
-      cause instanceof ImmortalStoreError && cause.code === "effect_binding_conflict"
+      cause instanceof ImmortalStoreError &&
+      cause.code === "effect_binding_conflict"
   )
 })
 
@@ -147,6 +213,7 @@ test("session persistence refuses custody or settlement secrets", async () => {
       settlement: { preimage: "not-allowed" },
     }),
     (cause) =>
-      cause instanceof ImmortalStoreError && cause.code === "secret_material_refused"
+      cause instanceof ImmortalStoreError &&
+      cause.code === "secret_material_refused"
   )
 })

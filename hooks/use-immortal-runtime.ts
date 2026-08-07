@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useRef, useState } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
 
 import type {
   ImmortalConfigResult,
@@ -8,6 +8,11 @@ import type {
   ImmortalRuntimeStatus,
 } from "@/lib/immortal/config"
 import type { ImmortalBrowserRuntime } from "@/lib/immortal/runtime"
+import type {
+  ImmortalMarketSnapshot,
+  QuoteRequestInput,
+  QuoteState,
+} from "@/lib/immortal/market"
 
 export function useImmortalRuntime(config: ImmortalConfigResult) {
   const runtimeRef = useRef<ImmortalBrowserRuntime | null>(null)
@@ -25,6 +30,16 @@ export function useImmortalRuntime(config: ImmortalConfigResult) {
   )
   const [provenance, setProvenance] =
     useState<ImmortalRuntimeProvenance | null>(null)
+  const [market, setMarket] = useState<ImmortalMarketSnapshot>({
+    assets: [],
+    directions: [],
+    activeProviderCount: 0,
+    activeOfferingCount: 0,
+  })
+  const [quotes, setQuotes] = useState<QuoteState>({
+    state: "idle",
+    detail: "Enter an offered amount to request signed quotes.",
+  })
 
   useEffect(() => {
     let disposed = false
@@ -41,6 +56,8 @@ export function useImmortalRuntime(config: ImmortalConfigResult) {
         const runtime = new ImmortalBrowserRuntime({
           onStatus: setStatus,
           onProvenance: setProvenance,
+          onMarket: setMarket,
+          onQuotes: setQuotes,
         })
         runtimeRef.current = runtime
         return runtime.start(config)
@@ -64,5 +81,21 @@ export function useImmortalRuntime(config: ImmortalConfigResult) {
     }
   }, [config])
 
-  return { status, provenance, runtimeRef }
+  const requestQuotes = useCallback((input: QuoteRequestInput) => {
+    return runtimeRef.current?.requestQuotes(input) ?? Promise.resolve()
+  }, [])
+
+  const resetQuotes = useCallback(() => {
+    runtimeRef.current?.resetQuotes()
+  }, [])
+
+  return {
+    status,
+    provenance,
+    market,
+    quotes,
+    requestQuotes,
+    resetQuotes,
+    runtimeRef,
+  }
 }

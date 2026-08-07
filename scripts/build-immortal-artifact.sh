@@ -4,7 +4,7 @@ umask 077
 
 cd "$(dirname "$0")/.."
 
-readonly expected_revision="d62a4f7c6c34a11d191fe78316fd8d4ce4da1d34"
+readonly expected_revision="69a78231ffeae5a78fe45de9aba122db00178953"
 readonly expected_rustc="rustc 1.95.0 (59807616e 2026-04-14)"
 readonly expected_cargo="cargo 1.95.0 (f2d3ce0bd 2026-03-21)"
 readonly source_input="${IMMORTAL_SOURCE_DIR:?set IMMORTAL_SOURCE_DIR to an exact Immortal checkout}"

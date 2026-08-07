@@ -6,7 +6,7 @@
 `bf881d40b212367ac54186b3405169dae32b5985c0fa9b4e02d397c505cc0942`.
 
 The boundary pins Immortal source revision
-`d62a4f7c6c34a11d191fe78316fd8d4ce4da1d34`, browser ABI version 1, and
+`69a78231ffeae5a78fe45de9aba122db00178953`, browser ABI version 1, and
 requester API digest
 `bf52fda5f4d349fbbe195e4cff58af59a3930e1ee8ab1f1413b6338ba44fb3a8`.
 It is vendored because the OpenAgents package is not published to npm. Bazaar

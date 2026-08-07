@@ -1,11 +1,11 @@
 export const IMMORTAL_ARTIFACT = {
   schema: "openagents.bazaar.immortal-browser-artifact.v1",
-  sourceRevision: "d62a4f7c6c34a11d191fe78316fd8d4ce4da1d34",
+  sourceRevision: "69a78231ffeae5a78fe45de9aba122db00178953",
   requesterApiSha256:
     "bf52fda5f4d349fbbe195e4cff58af59a3930e1ee8ab1f1413b6338ba44fb3a8",
   wasmSha256:
-    "aee4e846a1bfb331ab3896c246e6d93ea1fcb2ef82adb4caf229760fc9cbc088",
-  wasmBytes: 3_735_499,
+    "7cd00d973892ed90348c1101447c05a8194c3258a3bb5e6fd92dd0fc62130505",
+  wasmBytes: 3_736_659,
   wasmUrl: "/immortal/immortal_client_web.wasm",
 } as const
 
@@ -40,6 +40,33 @@ export interface ImmortalDemoProvider {
   }
 }
 
+export type ImmortalDemoSwapType = "submarine" | "reverse" | "chain"
+
+export interface ImmortalDemoRequesterPublicKey {
+  readonly legId: string
+  readonly path: string
+  readonly publicKey: string
+}
+
+export interface ImmortalDemoRequestTemplate {
+  readonly swapType: ImmortalDemoSwapType
+  readonly inputAssetId: string
+  readonly outputAssetId: string
+  readonly inputAmount: string
+  readonly paymentHash: string
+  readonly invoiceSha256: string | null
+  readonly requesterPublicKeys: readonly ImmortalDemoRequesterPublicKey[]
+}
+
+export interface ImmortalDemoRequestContract {
+  readonly schema: "openagents.immortal.no-spend-request-contract.v1"
+  readonly templates: readonly [
+    ImmortalDemoRequestTemplate,
+    ImmortalDemoRequestTemplate,
+    ImmortalDemoRequestTemplate,
+  ]
+}
+
 export interface ImmortalDemoConfig {
   readonly schema: "openagents.bazaar.immortal-demo-config.v1"
   readonly sourceRevision: string
@@ -52,6 +79,7 @@ export interface ImmortalDemoConfig {
     readonly contractIdentity: ImmortalContractIdentity
   }
   readonly providers: readonly [ImmortalDemoProvider, ImmortalDemoProvider]
+  readonly requestContract: ImmortalDemoRequestContract
   readonly lifecycle: {
     readonly terminalPath: "bilateral_contract_then_mutual_cancel"
     readonly externalSpendEffects: 0
@@ -77,7 +105,11 @@ export type ImmortalRuntimeStatus =
       readonly code: string
       readonly detail: string
     }
-  | { readonly state: "unavailable"; readonly code: string; readonly detail: string }
+  | {
+      readonly state: "unavailable"
+      readonly code: string
+      readonly detail: string
+    }
   | { readonly state: "connecting"; readonly detail: string }
   | {
       readonly state: "reconnecting"

@@ -1,5 +1,10 @@
 import { generateSecretKey, getPublicKey } from "@openagentsinc/nip-mkt"
 
+import type {
+  ImmortalSessionDeliveryInput,
+  ImmortalSignedRecordDelivery,
+} from "@/vendor/mkt-swp/immortal-browser-abi"
+
 const DATABASE_NAME = "openagents-bazaar-immortal"
 const DATABASE_VERSION = 1
 const OBJECT_STORE = "records"
@@ -74,12 +79,14 @@ export interface StoredSignedRecord {
 export interface StoredValidatedDelivery {
   readonly eventId: string
   readonly wrapId: string | null
+  readonly rawWrapEvent: string | null
   readonly sealId: string | null
   readonly rumorId: string | null
   readonly receivedAt: number
   readonly senderPubkey: string
   readonly source: "counterparty" | "sender_recovery" | "direct"
-  readonly engineDelivery: unknown
+  readonly engineInput: ImmortalSessionDeliveryInput
+  readonly engineDelivery: ImmortalSignedRecordDelivery
 }
 
 export interface StoredEffectResult {
@@ -112,6 +119,24 @@ export interface StoredImmortalSession {
   readonly updatedAt: number
 }
 
+export function engineInputsForSession(
+  session: StoredImmortalSession
+): readonly ImmortalSessionDeliveryInput[] {
+  return session.signedRecords.map((record) => {
+    const candidates = session.validatedDeliveries
+      .filter((delivery) => delivery.eventId === record.id)
+      .toSorted(compareEngineDeliveryEvidence)
+    const selected = candidates[0]
+    if (!selected) {
+      throw new ImmortalStoreError(
+        "session_invalid",
+        `Signed record ${record.id} has no validated delivery evidence.`
+      )
+    }
+    return selected.engineInput
+  })
+}
+
 interface StoreEnvelope {
   readonly schema: "openagents.bazaar.immortal-store-envelope.v1"
   readonly storeVersion: 1
@@ -142,7 +167,9 @@ export class MemoryStringKv implements StringKv {
   }
 
   async keys(prefix: string): Promise<readonly string[]> {
-    return [...this.values.keys()].filter((key) => key.startsWith(prefix)).sort()
+    return [...this.values.keys()]
+      .filter((key) => key.startsWith(prefix))
+      .sort()
   }
 }
 
@@ -170,14 +197,18 @@ export class IndexedDbStringKv implements StringKv {
     }).catch((cause) => {
       throw new ImmortalStoreError(
         "storage_unavailable",
-        cause instanceof Error ? cause.message : "IndexedDB could not be opened."
+        cause instanceof Error
+          ? cause.message
+          : "IndexedDB could not be opened."
       )
     })
     return new IndexedDbStringKv(database)
   }
 
   async get(key: string): Promise<string | undefined> {
-    return this.request<string | undefined>("readonly", (store) => store.get(key))
+    return this.request<string | undefined>("readonly", (store) =>
+      store.get(key)
+    )
   }
 
   async set(key: string, value: string): Promise<void> {
@@ -193,7 +224,10 @@ export class IndexedDbStringKv implements StringKv {
       store.getAllKeys()
     )
     return keys
-      .filter((key): key is string => typeof key === "string" && key.startsWith(prefix))
+      .filter(
+        (key): key is string =>
+          typeof key === "string" && key.startsWith(prefix)
+      )
       .sort()
   }
 
@@ -239,13 +273,21 @@ export class ImmortalSessionStore {
   async create(
     input: Omit<
       StoredImmortalSession,
-      "schema" | "signedRecords" | "validatedDeliveries" | "effects" | "createdAt" | "updatedAt"
+      | "schema"
+      | "signedRecords"
+      | "validatedDeliveries"
+      | "effects"
+      | "createdAt"
+      | "updatedAt"
     >
   ): Promise<StoredImmortalSession> {
     return this.serial(input.sessionId, async () => {
       const key = sessionKey(input.sessionId)
       if (await this.kv.get(key)) {
-        throw new ImmortalStoreError("session_conflict", "The session already exists.")
+        throw new ImmortalStoreError(
+          "session_conflict",
+          "The session already exists."
+        )
       }
       const timestamp = this.now()
       const session: StoredImmortalSession = {
@@ -271,7 +313,7 @@ export class ImmortalSessionStore {
       const existingRecord = session.signedRecords.find(
         (candidate) => candidate.id === signedRecord.id
       )
-      if (existingRecord && canonicalJson(existingRecord) !== canonicalJson(signedRecord)) {
+      if (existingRecord && !sameSignedRecord(existingRecord, signedRecord)) {
         throw new ImmortalStoreError(
           "signed_record_conflict",
           "A signed event ID was replayed with different bytes."
@@ -279,7 +321,8 @@ export class ImmortalSessionStore {
       }
       const existingDelivery = session.validatedDeliveries.find(
         (candidate) =>
-          candidate.eventId === delivery.eventId && candidate.wrapId === delivery.wrapId
+          candidate.eventId === delivery.eventId &&
+          candidate.wrapId === delivery.wrapId
       )
       if (
         existingDelivery &&
@@ -307,7 +350,10 @@ export class ImmortalSessionStore {
     snapshotJsonHex: string,
     engineView: unknown
   ): Promise<StoredImmortalSession> {
-    if (!LOWER_EVEN_HEX.test(snapshotJsonHex) || snapshotJsonHex.length > 4_194_304) {
+    if (
+      !LOWER_EVEN_HEX.test(snapshotJsonHex) ||
+      snapshotJsonHex.length > 4_194_304
+    ) {
       throw new ImmortalStoreError(
         "session_invalid",
         "The engine snapshot is not bounded lowercase hexadecimal bytes."
@@ -341,7 +387,9 @@ export class ImmortalSessionStore {
     validateHex32(effectId, "effect ID")
     const requestDigest = await digestJson(request)
     return this.update(sessionId, (session) => {
-      const existing = session.effects.find((candidate) => candidate.effectId === effectId)
+      const existing = session.effects.find(
+        (candidate) => candidate.effectId === effectId
+      )
       if (existing) {
         if (existing.requestDigest !== requestDigest) {
           throw new ImmortalStoreError(
@@ -369,7 +417,9 @@ export class ImmortalSessionStore {
   ): Promise<StoredImmortalSession> {
     const digest = await digestJson(result)
     return this.update(sessionId, (session) => {
-      const existing = session.effects.find((candidate) => candidate.effectId === effectId)
+      const existing = session.effects.find(
+        (candidate) => candidate.effectId === effectId
+      )
       if (!existing) {
         throw new ImmortalStoreError(
           "effect_binding_conflict",
@@ -391,7 +441,12 @@ export class ImmortalSessionStore {
           candidate.effectId === effectId
             ? {
                 ...candidate,
-                result: { digest, value: result, externalId, observedAt: this.now() },
+                result: {
+                  digest,
+                  value: result,
+                  externalId,
+                  observedAt: this.now(),
+                },
               }
             : candidate
         ),
@@ -405,7 +460,9 @@ export class ImmortalSessionStore {
     request: unknown
   ): Promise<StoredEffectResult | null> {
     const session = await this.get(sessionId)
-    const existing = session.effects.find((candidate) => candidate.effectId === effectId)
+    const existing = session.effects.find(
+      (candidate) => candidate.effectId === effectId
+    )
     if (!existing) return null
     if (existing.requestDigest !== (await digestJson(request))) {
       throw new ImmortalStoreError(
@@ -441,13 +498,19 @@ export class ImmortalSessionStore {
   private async loadEnvelope(key: string): Promise<StoreEnvelope> {
     const encoded = await this.kv.get(key)
     if (!encoded) {
-      throw new ImmortalStoreError("session_missing", "The stored session does not exist.")
+      throw new ImmortalStoreError(
+        "session_missing",
+        "The stored session does not exist."
+      )
     }
     let value: unknown
     try {
       value = JSON.parse(encoded)
     } catch {
-      throw new ImmortalStoreError("storage_corrupt", "A stored session is not valid JSON.")
+      throw new ImmortalStoreError(
+        "storage_corrupt",
+        "A stored session is not valid JSON."
+      )
     }
     const envelope = value as Partial<StoreEnvelope>
     if (
@@ -465,7 +528,10 @@ export class ImmortalSessionStore {
       !envelope.payload ||
       envelope.payload.schema !== "openagents.bazaar.immortal-session.v1"
     ) {
-      throw new ImmortalStoreError("storage_corrupt", "A stored session envelope is invalid.")
+      throw new ImmortalStoreError(
+        "storage_corrupt",
+        "A stored session envelope is invalid."
+      )
     }
     validateSession(envelope.payload)
     if ((await digestJson(envelope.payload)) !== envelope.payloadDigest) {
@@ -494,7 +560,10 @@ export class ImmortalSessionStore {
     await this.kv.set(key, canonicalJson(envelope))
   }
 
-  private async serial<T>(sessionId: string, operation: () => Promise<T>): Promise<T> {
+  private async serial<T>(
+    sessionId: string,
+    operation: () => Promise<T>
+  ): Promise<T> {
     const previous = this.queues.get(sessionId) ?? Promise.resolve()
     let release: () => void = () => {}
     const current = new Promise<void>((resolve) => {
@@ -504,12 +573,39 @@ export class ImmortalSessionStore {
     this.queues.set(sessionId, queued)
     await previous
     try {
-      return await withBrowserLock(`bazaar-immortal-session-${sessionId}`, operation)
+      return await withBrowserLock(
+        `bazaar-immortal-session-${sessionId}`,
+        operation
+      )
     } finally {
       release()
       if (this.queues.get(sessionId) === queued) this.queues.delete(sessionId)
     }
   }
+}
+
+function sameSignedRecord(
+  left: StoredSignedRecord,
+  right: StoredSignedRecord
+): boolean {
+  return (
+    left.id === right.id &&
+    left.pubkey === right.pubkey &&
+    left.kind === right.kind &&
+    left.createdAt === right.createdAt &&
+    left.rawSignedEvent === right.rawSignedEvent
+  )
+}
+
+function compareEngineDeliveryEvidence(
+  left: StoredValidatedDelivery,
+  right: StoredValidatedDelivery
+): number {
+  return (
+    left.receivedAt - right.receivedAt ||
+    (left.wrapId ?? "").localeCompare(right.wrapId ?? "") ||
+    left.source.localeCompare(right.source)
+  )
 }
 
 export async function loadOrCreateDemoIdentity(
@@ -557,13 +653,20 @@ export async function loadOrCreateDemoIdentity(
 
 export function hexToBytes(value: string): Uint8Array {
   if (!LOWER_EVEN_HEX.test(value)) {
-    throw new ImmortalStoreError("session_invalid", "Expected lowercase hexadecimal bytes.")
+    throw new ImmortalStoreError(
+      "session_invalid",
+      "Expected lowercase hexadecimal bytes."
+    )
   }
-  return Uint8Array.from(value.match(/../g) ?? [], (byte) => Number.parseInt(byte, 16))
+  return Uint8Array.from(value.match(/../g) ?? [], (byte) =>
+    Number.parseInt(byte, 16)
+  )
 }
 
 export function bytesToHex(value: Uint8Array): string {
-  return Array.from(value, (byte) => byte.toString(16).padStart(2, "0")).join("")
+  return Array.from(value, (byte) => byte.toString(16).padStart(2, "0")).join(
+    ""
+  )
 }
 
 export function canonicalJson(value: unknown): string {
@@ -572,7 +675,9 @@ export function canonicalJson(value: unknown): string {
 
 export async function digestJson(value: unknown): Promise<string> {
   const bytes = new TextEncoder().encode(canonicalJson(value))
-  return bytesToHex(new Uint8Array(await crypto.subtle.digest("SHA-256", bytes)))
+  return bytesToHex(
+    new Uint8Array(await crypto.subtle.digest("SHA-256", bytes))
+  )
 }
 
 function canonicalize(value: unknown): unknown {
@@ -598,7 +703,10 @@ function canonicalize(value: unknown): unknown {
   )
 }
 
-async function withBrowserLock<T>(name: string, operation: () => Promise<T>): Promise<T> {
+async function withBrowserLock<T>(
+  name: string,
+  operation: () => Promise<T>
+): Promise<T> {
   if (typeof navigator !== "undefined" && navigator.locks) {
     return navigator.locks.request(name, operation)
   }
@@ -607,7 +715,10 @@ async function withBrowserLock<T>(name: string, operation: () => Promise<T>): Pr
 
 function validateSession(session: StoredImmortalSession): void {
   if (session.schema !== "openagents.bazaar.immortal-session.v1") {
-    throw new ImmortalStoreError("session_invalid", "The session schema is unsupported.")
+    throw new ImmortalStoreError(
+      "session_invalid",
+      "The session schema is unsupported."
+    )
   }
   validateHex32(session.sessionId, "session ID")
   validateHex32(session.requesterPubkey, "requester public key")
@@ -627,16 +738,61 @@ function validateSession(session: StoredImmortalSession): void {
     (!LOWER_EVEN_HEX.test(session.engineSnapshotJsonHex) ||
       session.engineSnapshotJsonHex.length > 4_194_304)
   ) {
-    throw new ImmortalStoreError("session_invalid", "The engine snapshot is invalid.")
+    throw new ImmortalStoreError(
+      "session_invalid",
+      "The engine snapshot is invalid."
+    )
   }
   for (const record of session.signedRecords) {
     validateHex32(record.id, "signed event ID")
     validateHex32(record.pubkey, "signed event author")
-    if (!Number.isSafeInteger(record.kind) || !Number.isSafeInteger(record.createdAt)) {
-      throw new ImmortalStoreError("session_invalid", "A signed record is invalid.")
+    if (
+      !Number.isSafeInteger(record.kind) ||
+      !Number.isSafeInteger(record.createdAt)
+    ) {
+      throw new ImmortalStoreError(
+        "session_invalid",
+        "A signed record is invalid."
+      )
     }
   }
-  for (const effect of session.effects) validateHex32(effect.effectId, "effect ID")
+  for (const delivery of session.validatedDeliveries) {
+    validateHex32(delivery.eventId, "delivery event ID")
+    validateOptionalHex32(delivery.wrapId, "delivery wrap ID")
+    validateOptionalHex32(delivery.sealId, "delivery seal ID")
+    validateOptionalHex32(delivery.rumorId, "delivery rumor ID")
+    validateHex32(delivery.senderPubkey, "delivery sender")
+    if (
+      !Number.isSafeInteger(delivery.receivedAt) ||
+      delivery.receivedAt < 0 ||
+      !["counterparty", "sender_recovery", "direct"].includes(delivery.source)
+    ) {
+      throw new ImmortalStoreError(
+        "session_invalid",
+        "The validated delivery provenance is invalid."
+      )
+    }
+    const expectedProvenance =
+      delivery.source === "direct" ? "locally_signed" : "direct"
+    if (
+      !LOWER_EVEN_HEX.test(delivery.engineInput.raw_signed_event_hex) ||
+      delivery.engineInput.observed_at !== delivery.receivedAt ||
+      delivery.engineInput.provenance !== expectedProvenance ||
+      delivery.engineDelivery.event_id !== delivery.eventId ||
+      delivery.engineDelivery.sender_pubkey !== delivery.senderPubkey ||
+      delivery.engineDelivery.observed_at !== delivery.receivedAt ||
+      delivery.engineDelivery.provenance !== expectedProvenance ||
+      delivery.engineDelivery.raw_wrap_event !== null ||
+      delivery.engineDelivery.wrap_event_id !== null
+    ) {
+      throw new ImmortalStoreError(
+        "session_invalid",
+        "The validated delivery engine binding is invalid."
+      )
+    }
+  }
+  for (const effect of session.effects)
+    validateHex32(effect.effectId, "effect ID")
 }
 
 function validateIdentity(identity: DemoIdentity): void {
@@ -647,7 +803,10 @@ function validateIdentity(identity: DemoIdentity): void {
     getPublicKey(hexToBytes(identity.privateKeyHex)) !== identity.pubkey ||
     identity.policy !== "local_demo_identity_only_never_fund_or_reuse"
   ) {
-    throw new ImmortalStoreError("storage_corrupt", "The demo identity is invalid.")
+    throw new ImmortalStoreError(
+      "storage_corrupt",
+      "The demo identity is invalid."
+    )
   }
 }
 
@@ -660,14 +819,19 @@ function validateRoute(route: ProviderRoute): void {
     )
   }
   const relay = new URL(route.relayUrl)
-  if (!['ws:', 'wss:'].includes(relay.protocol)) {
-    throw new ImmortalStoreError("session_invalid", "The route relay is invalid.")
+  if (!["ws:", "wss:"].includes(relay.protocol)) {
+    throw new ImmortalStoreError(
+      "session_invalid",
+      "The route relay is invalid."
+    )
   }
 }
 
 function assertNoSessionSecrets(value: unknown, path = "session"): void {
   if (Array.isArray(value)) {
-    value.forEach((item, index) => assertNoSessionSecrets(item, `${path}[${index}]`))
+    value.forEach((item, index) =>
+      assertNoSessionSecrets(item, `${path}[${index}]`)
+    )
     return
   }
   if (!value || typeof value !== "object") return
@@ -686,6 +850,10 @@ function validateHex32(value: string, label: string): void {
   if (!LOWER_HEX_32.test(value)) {
     throw new ImmortalStoreError("session_invalid", `${label} is invalid.`)
   }
+}
+
+function validateOptionalHex32(value: string | null, label: string): void {
+  if (value !== null) validateHex32(value, label)
 }
 
 function sessionKey(sessionId: string): string {

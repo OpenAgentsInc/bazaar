@@ -32,9 +32,24 @@ const CONTRACT: ImmortalContractIdentity = {
   crateName: "immortal",
   crateVersion: "0.1.0",
   nips: [
-    { lane: "market", repo: "openagents", subdir: "nips/market", commit: "11".repeat(20) },
-    { lane: "relay", repo: "openagents", subdir: "nips/relay", commit: "22".repeat(20) },
-    { lane: "swap", repo: "openagents", subdir: "nips/swap", commit: "33".repeat(20) },
+    {
+      lane: "market",
+      repo: "openagents",
+      subdir: "nips/market",
+      commit: "11".repeat(20),
+    },
+    {
+      lane: "relay",
+      repo: "openagents",
+      subdir: "nips/relay",
+      commit: "22".repeat(20),
+    },
+    {
+      lane: "swap",
+      repo: "openagents",
+      subdir: "nips/swap",
+      commit: "33".repeat(20),
+    },
   ],
 }
 
@@ -112,7 +127,12 @@ test("relay transport authenticates with NIP-42 and waits for both EOSE snapshot
   assert.equal(information.version, CONTRACT.crateVersion)
   assert.equal(snapshots.length, 1)
   assert.equal(observed.reqs.length, 2)
-  assert.deepEqual(observed.states, ["connecting", "authenticating", "snapshot", "live"])
+  assert.deepEqual(observed.states, [
+    "connecting",
+    "authenticating",
+    "snapshot",
+    "live",
+  ])
   assert.ok(observed.auth && verifyEvent(observed.auth))
   assert.equal(observed.auth.kind, 22_242)
   assert.deepEqual(observed.auth.tags, [
@@ -159,7 +179,10 @@ test("both NIP-59 copies recover the same engine-validated signed RFQ", async ()
   const provider = identity()
   const wasm = await readFile("public/immortal/immortal_client_web.wasm")
   const client = await Effect.runPromise(loadImmortalBrowserClient(wasm))
-  assert.equal(client.metadata.source_revision, IMMORTAL_ARTIFACT.sourceRevision)
+  assert.equal(
+    client.metadata.source_revision,
+    IMMORTAL_ARTIFACT.sourceRevision
+  )
   const sessionId = "aa".repeat(32)
   const request = await Effect.runPromise(
     requesterRfq(
@@ -211,5 +234,7 @@ test("both NIP-59 copies recover the same engine-validated signed RFQ", async ()
   assert.equal(counterparty.storedDelivery.source, "counterparty")
   assert.equal(recovery.storedDelivery.source, "sender_recovery")
   assert.equal(counterparty.engineDelivery.event_id, signed.id)
+  assert.equal(counterparty.engineInput.provenance, "direct")
+  assert.equal(recovery.engineInput.provenance, "direct")
   assert.notEqual(copies.counterparty.id, copies.senderRecovery.id)
 })

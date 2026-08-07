@@ -1,9 +1,10 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import {
   ArrowDownIcon,
   BitcoinIcon,
+  CheckIcon,
   ChevronRightIcon,
   DropletsIcon,
   Settings2Icon,
@@ -40,11 +41,21 @@ import type {
   ImmortalConfigResult,
   ImmortalRuntimeStatus,
 } from "@/lib/immortal/config"
+import {
+  findDirection,
+  formatAtomicAmount,
+  type ImmortalMarketSnapshot,
+  type MarketAsset,
+  type MarketAssetTicker,
+  type MarketDirection,
+  type QuoteState,
+  type ValidatedQuote,
+} from "@/lib/immortal/market"
 
-const assets = {
+const assetUi = {
   LN: {
     label: "Lightning",
-    destination: "Lightning invoice or address",
+    destination: "Lightning invoice or Lightning address",
     Icon: ZapIcon,
     iconClassName: "bg-primary text-primary-foreground",
   },
@@ -62,10 +73,8 @@ const assets = {
   },
 } as const
 
-type Asset = keyof typeof assets
-
-function AssetIcon({ asset }: { asset: Asset }) {
-  const { Icon, iconClassName } = assets[asset]
+function AssetIcon({ ticker }: { ticker: MarketAssetTicker }) {
+  const { Icon, iconClassName } = assetUi[ticker]
 
   return (
     <span
@@ -77,30 +86,34 @@ function AssetIcon({ asset }: { asset: Asset }) {
 }
 
 function AssetPicker({
-  value,
+  ticker,
+  options,
   onValueChange,
   label,
 }: {
-  value: Asset
-  onValueChange: (value: Asset) => void
+  ticker: MarketAssetTicker
+  options: readonly MarketAsset[]
+  onValueChange: (value: MarketAssetTicker) => void
   label: string
 }) {
+  const enabled = options.length > 0
   return (
     <Select
-      value={value}
+      value={ticker}
+      disabled={!enabled}
       onValueChange={(nextValue) => {
-        if (nextValue && nextValue in assets) {
-          onValueChange(nextValue as Asset)
+        if (options.some((asset) => asset.ticker === nextValue)) {
+          onValueChange(nextValue as MarketAssetTicker)
         }
       }}
     >
       <SelectTrigger
         aria-label={label}
-        className="absolute bottom-3 left-2 z-10 h-11 w-auto max-w-[10rem] rounded-full border-foreground/15 bg-card px-1.5 pr-3 text-foreground shadow-none hover:bg-accent focus-visible:border-primary focus-visible:ring-primary/25"
+        className="absolute bottom-3 left-2 z-10 h-11 w-auto max-w-[10rem] rounded-full border-foreground/15 bg-card px-1.5 pr-3 text-foreground shadow-none hover:bg-accent focus-visible:border-primary focus-visible:ring-primary/25 disabled:opacity-60"
       >
-        <AssetIcon asset={value} />
+        <AssetIcon ticker={ticker} />
         <SelectValue className="font-semibold uppercase">
-          {assets[value].label}
+          {assetUi[ticker].label}
         </SelectValue>
       </SelectTrigger>
       <SelectContent
@@ -108,10 +121,10 @@ function AssetPicker({
         alignItemWithTrigger={false}
         className="min-w-52 rounded-xl bg-popover text-popover-foreground ring-foreground/15"
       >
-        {(Object.keys(assets) as Asset[]).map((asset) => (
-          <SelectItem key={asset} value={asset}>
-            <AssetIcon asset={asset} />
-            <span>{assets[asset].label}</span>
+        {options.map((asset) => (
+          <SelectItem key={asset.id} value={asset.ticker}>
+            <AssetIcon ticker={asset.ticker} />
+            <span>{asset.label}</span>
           </SelectItem>
         ))}
       </SelectContent>
@@ -122,88 +135,165 @@ function AssetPicker({
 function AmountField({
   side,
   amount,
-  asset,
+  ticker,
+  options,
   onAmountChange,
   onAssetChange,
-  showMax = false,
+  hint,
+  invalid = false,
+  readOnly = false,
 }: {
   side: "Send" | "Receive"
   amount: string
-  asset: Asset
-  onAmountChange: (value: string) => void
-  onAssetChange: (value: Asset) => void
-  showMax?: boolean
+  ticker: MarketAssetTicker
+  options: readonly MarketAsset[]
+  onAmountChange?: (value: string) => void
+  onAssetChange: (value: MarketAssetTicker) => void
+  hint: string
+  invalid?: boolean
+  readOnly?: boolean
 }) {
   return (
-    <div className="relative overflow-visible rounded-xl bg-input ring-1 ring-foreground/15 transition-shadow focus-within:ring-primary/60">
+    <div
+      className={`relative overflow-visible rounded-xl bg-input ring-1 transition-shadow ${
+        invalid
+          ? "ring-destructive/70"
+          : "ring-foreground/15 focus-within:ring-primary/60"
+      }`}
+    >
       <label
         htmlFor={`${side.toLowerCase()}-amount`}
         className="pointer-events-none absolute top-2.5 left-3.5 z-10 text-[0.6875rem] font-bold text-muted-foreground uppercase"
       >
         {side}
       </label>
-      {showMax ? (
-        <Button
-          type="button"
-          variant="ghost"
-          size="xs"
-          disabled
-          className="absolute top-2 right-2 z-10 h-5 rounded-full border border-foreground/10 px-2 text-[0.625rem] font-semibold text-muted-foreground uppercase hover:border-foreground/25 hover:bg-card hover:text-foreground"
-        >
-          Max
-        </Button>
-      ) : null}
       <AssetPicker
-        value={asset}
+        ticker={ticker}
+        options={options}
         onValueChange={onAssetChange}
         label={`Select asset to ${side.toLowerCase()}`}
       />
       <Input
         id={`${side.toLowerCase()}-amount`}
         type="text"
-        inputMode="decimal"
+        inputMode={readOnly ? undefined : "numeric"}
         autoComplete="off"
         placeholder="0"
         value={amount}
-        onChange={(event) => onAmountChange(event.target.value)}
+        readOnly={readOnly}
+        aria-invalid={invalid || undefined}
+        onChange={(event) =>
+          onAmountChange?.(normalizeAtomicInput(event.target.value))
+        }
         className="h-24 rounded-xl border-0 bg-transparent pt-7 pr-3.5 pb-6 pl-44 text-right text-[2rem] leading-none font-normal tracking-tight text-foreground shadow-none placeholder:text-muted-foreground focus-visible:border-transparent focus-visible:ring-0 md:text-[2rem]"
       />
-      <span className="pointer-events-none absolute right-3.5 bottom-1.5 text-[0.6875rem] text-muted-foreground">
-        $0.00
+      <span className="pointer-events-none absolute right-3.5 bottom-1.5 max-w-[15rem] truncate text-[0.6875rem] text-muted-foreground">
+        {hint}
       </span>
     </div>
   )
 }
 
 export function SwapPage({ config }: { config: ImmortalConfigResult }) {
-  const [sendAsset, setSendAsset] = useState<Asset>("LN")
-  const [receiveAsset, setReceiveAsset] = useState<Asset>("BTC")
+  const [sendTicker, setSendTicker] = useState<MarketAssetTicker>("LN")
+  const [receiveTicker, setReceiveTicker] = useState<MarketAssetTicker>("BTC")
   const [sendAmount, setSendAmount] = useState("")
-  const [receiveAmount, setReceiveAmount] = useState("")
   const [destination, setDestination] = useState("")
-  const { status, provenance } = useImmortalRuntime(config)
+  const { status, provenance, market, quotes, requestQuotes, resetQuotes } =
+    useImmortalRuntime(config)
 
-  function changeSendAsset(nextAsset: Asset) {
-    if (nextAsset === receiveAsset) {
-      setReceiveAsset(sendAsset)
+  const direction = directionByTicker(market, sendTicker, receiveTicker)
+  const sendOptions = useMemo(
+    () =>
+      market.assets.filter((asset) =>
+        market.directions.some(
+          (candidate) => candidate.inputAsset.ticker === asset.ticker
+        )
+      ),
+    [market]
+  )
+  const receiveOptions = useMemo(
+    () =>
+      uniqueAssets(
+        market.directions
+          .filter((candidate) => candidate.inputAsset.ticker === sendTicker)
+          .map((candidate) => candidate.outputAsset)
+      ),
+    [market, sendTicker]
+  )
+  const amountState = validateAmount(sendAmount, direction)
+  const selectedQuote = quotes.state === "ready" ? quotes.selected : null
+  const receiveAmount = selectedQuote?.outputAmount ?? ""
+  const destinationLabel = assetUi[receiveTicker].destination
+  const reverseAvailable = Boolean(
+    directionByTicker(market, receiveTicker, sendTicker)?.actionable
+  )
+
+  useEffect(() => {
+    if (
+      status.state !== "live" ||
+      !direction?.actionable ||
+      !amountState.valid
+    ) {
+      resetQuotes()
+      return
     }
-    setSendAsset(nextAsset)
+    const timer = setTimeout(() => {
+      void requestQuotes({
+        inputAssetId: direction.inputAsset.id,
+        outputAssetId: direction.outputAsset.id,
+        inputAmount: sendAmount,
+      })
+    }, 450)
+    return () => clearTimeout(timer)
+  }, [
+    amountState.valid,
+    direction,
+    requestQuotes,
+    resetQuotes,
+    sendAmount,
+    status.state,
+  ])
+
+  function changeSendAsset(nextTicker: MarketAssetTicker) {
+    const outputs = market.directions.filter(
+      (candidate) => candidate.inputAsset.ticker === nextTicker
+    )
+    setSendTicker(nextTicker)
+    if (
+      !outputs.some(
+        (candidate) => candidate.outputAsset.ticker === receiveTicker
+      )
+    ) {
+      setReceiveTicker(outputs[0]?.outputAsset.ticker ?? receiveTicker)
+    }
+    setSendAmount("")
+    setDestination("")
+    resetQuotes()
   }
 
-  function changeReceiveAsset(nextAsset: Asset) {
-    if (nextAsset === sendAsset) {
-      setSendAsset(receiveAsset)
-    }
-    setReceiveAsset(nextAsset)
+  function changeReceiveAsset(nextTicker: MarketAssetTicker) {
+    setReceiveTicker(nextTicker)
+    setDestination("")
+    resetQuotes()
+  }
+
+  function changeAmount(value: string) {
+    setSendAmount(value)
+    resetQuotes()
   }
 
   function reverseSwap() {
-    setSendAsset(receiveAsset)
-    setReceiveAsset(sendAsset)
-    setSendAmount(receiveAmount)
-    setReceiveAmount(sendAmount)
+    if (!reverseAvailable) return
+    setSendTicker(receiveTicker)
+    setReceiveTicker(sendTicker)
+    setSendAmount("")
     setDestination("")
+    resetQuotes()
   }
+
+  const quoteReady = Boolean(selectedQuote && amountState.valid)
+  const canCreate = quoteReady && destination.trim().length > 0
 
   return (
     <main className="dark flex min-h-svh justify-center bg-background px-0 py-0 text-foreground sm:px-6 sm:py-16">
@@ -219,53 +309,7 @@ export function SwapPage({ config }: { config: ImmortalConfigResult }) {
           >
             Create Swap
           </CardTitle>
-          <Popover>
-            <PopoverTrigger
-              aria-label="Swap settings"
-              className="absolute top-4 right-4 inline-flex size-8 items-center justify-center rounded-lg text-muted-foreground transition-colors outline-none hover:bg-accent hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/30"
-            >
-              <Settings2Icon className="size-5" aria-hidden="true" />
-            </PopoverTrigger>
-            <PopoverContent
-              align="end"
-              className="w-64 rounded-xl bg-popover text-popover-foreground ring-foreground/15"
-            >
-              <PopoverHeader>
-                <PopoverTitle>Swap settings</PopoverTitle>
-                <PopoverDescription>
-                  Immortal runs in this browser and connects straight to the
-                  configured relay.
-                </PopoverDescription>
-              </PopoverHeader>
-              <RuntimeDisclosure status={status} />
-              <div className="flex items-center gap-2 rounded-lg bg-input p-3 text-xs text-muted-foreground">
-                <ShieldCheckIcon className="size-4 shrink-0 text-primary" />
-                Verify route and recovery paths before funding
-              </div>
-              {provenance ? (
-                <dl className="mt-2 space-y-1 rounded-lg border border-foreground/10 p-3 font-mono text-[0.625rem] text-muted-foreground">
-                  <div className="flex justify-between gap-3">
-                    <dt>ENGINE</dt>
-                    <dd title={provenance.engine.sourceRevision}>
-                      {provenance.engine.sourceRevision.slice(0, 8)}
-                    </dd>
-                  </div>
-                  <div className="flex justify-between gap-3">
-                    <dt>RELAY</dt>
-                    <dd>{provenance.relay.directBrowserSocket ? "DIRECT" : "—"}</dd>
-                  </div>
-                  <div className="flex justify-between gap-3">
-                    <dt>AUTH</dt>
-                    <dd>{provenance.relay.nip42Authenticated ? "NIP-42" : "—"}</dd>
-                  </div>
-                  <div className="flex justify-between gap-3">
-                    <dt>PROVIDERS</dt>
-                    <dd>{provenance.providers.length}</dd>
-                  </div>
-                </dl>
-              ) : null}
-            </PopoverContent>
-          </Popover>
+          <RuntimePopover status={status} provenance={provenance} />
         </CardHeader>
 
         <CardContent className="px-4 pt-2 pb-5 sm:px-5 sm:pb-5">
@@ -274,10 +318,12 @@ export function SwapPage({ config }: { config: ImmortalConfigResult }) {
               <AmountField
                 side="Send"
                 amount={sendAmount}
-                asset={sendAsset}
-                onAmountChange={setSendAmount}
+                ticker={sendTicker}
+                options={sendOptions}
+                onAmountChange={changeAmount}
                 onAssetChange={changeSendAsset}
-                showMax
+                hint={directionHint(direction)}
+                invalid={sendAmount.length > 0 && !amountState.valid}
               />
 
               <Button
@@ -285,8 +331,9 @@ export function SwapPage({ config }: { config: ImmortalConfigResult }) {
                 variant="outline"
                 size="icon"
                 aria-label="Reverse swap direction"
+                disabled={!reverseAvailable}
                 onClick={reverseSwap}
-                className="absolute top-1/2 left-1/2 z-20 size-8 -translate-x-1/2 -translate-y-1/2 rounded-md border-foreground/15 bg-card text-muted-foreground shadow-[0_2px_6px_oklch(0_0_0/0.35)] hover:border-foreground/25 hover:bg-accent hover:text-foreground"
+                className="absolute top-1/2 left-1/2 z-20 size-8 -translate-x-1/2 -translate-y-1/2 rounded-md border-foreground/15 bg-card text-muted-foreground shadow-[0_2px_6px_oklch(0_0_0/0.35)] hover:border-foreground/25 hover:bg-accent hover:text-foreground disabled:bg-card disabled:opacity-50"
               >
                 <ArrowDownIcon className="size-3.5" aria-hidden="true" />
               </Button>
@@ -294,35 +341,32 @@ export function SwapPage({ config }: { config: ImmortalConfigResult }) {
               <AmountField
                 side="Receive"
                 amount={receiveAmount}
-                asset={receiveAsset}
-                onAmountChange={setReceiveAmount}
+                ticker={receiveTicker}
+                options={receiveOptions}
                 onAssetChange={changeReceiveAsset}
+                hint={
+                  selectedQuote
+                    ? "Exact signed output"
+                    : "Waiting for signed Quotes"
+                }
+                readOnly
               />
             </div>
 
-            <Collapsible className="mt-4">
-              <div className="flex items-start justify-between gap-4 text-xs text-muted-foreground">
-                <div className="flex items-center gap-1.5 pt-0.5 font-mono">
-                  <span className="text-base text-foreground">₿</span>
-                  <span className="text-primary">sats</span>
-                </div>
-                <CollapsibleTrigger className="group flex items-start gap-1 text-right outline-none hover:text-foreground focus-visible:rounded-sm focus-visible:ring-2 focus-visible:ring-ring">
-                  <span>
-                    <span className="block">Network fee · —</span>
-                    <span className="block">Provider fee (0.5%) · —</span>
-                  </span>
-                  <ChevronRightIcon className="mt-0.5 size-3.5 transition-transform duration-200 group-data-panel-open:rotate-90 motion-reduce:transition-none" />
-                </CollapsibleTrigger>
-              </div>
-              <CollapsibleContent className="pt-2 text-right text-xs text-muted-foreground">
-                Route and provider details appear after a quote is available.
-              </CollapsibleContent>
-            </Collapsible>
+            <QuoteSummary quotes={quotes} direction={direction} />
+
+            <p
+              role="status"
+              aria-live="polite"
+              className="mt-3 min-h-4 text-center text-xs text-muted-foreground"
+            >
+              {cardStatus(status, direction, amountState, quotes)}
+            </p>
 
             <Separator className="my-4 bg-foreground/10" />
 
             <label htmlFor="destination" className="sr-only">
-              {assets[receiveAsset].destination}
+              {destinationLabel}
             </label>
             <Input
               id="destination"
@@ -330,7 +374,7 @@ export function SwapPage({ config }: { config: ImmortalConfigResult }) {
               autoComplete="off"
               value={destination}
               onChange={(event) => setDestination(event.target.value)}
-              placeholder={assets[receiveAsset].destination}
+              placeholder={`Enter ${destinationLabel.toLowerCase()} to receive funds`}
               className="h-12 rounded-xl border-foreground/15 bg-input text-center text-sm placeholder:text-muted-foreground focus-visible:border-primary focus-visible:ring-primary/25"
             />
 
@@ -339,7 +383,7 @@ export function SwapPage({ config }: { config: ImmortalConfigResult }) {
             <Button
               type="submit"
               size="lg"
-              disabled
+              disabled={!canCreate}
               className="h-11 w-full rounded-xl bg-primary font-bold text-primary-foreground hover:bg-primary/85 disabled:bg-[oklch(0.471_0.0177_251.32)] disabled:text-background disabled:opacity-100"
             >
               Create Swap
@@ -348,6 +392,182 @@ export function SwapPage({ config }: { config: ImmortalConfigResult }) {
         </CardContent>
       </Card>
     </main>
+  )
+}
+
+function QuoteSummary({
+  quotes,
+  direction,
+}: {
+  quotes: QuoteState
+  direction: MarketDirection | null
+}) {
+  const rows =
+    quotes.state === "requesting" || quotes.state === "ready"
+      ? quotes.quotes
+      : []
+  const selected = quotes.state === "ready" ? quotes.selected : null
+  const providerCount =
+    quotes.state === "requesting" || quotes.state === "ready"
+      ? quotes.requestedProviderCount
+      : (direction?.providerCount ?? 0)
+
+  return (
+    <Collapsible className="mt-4">
+      <div className="flex items-start justify-between gap-4 text-xs text-muted-foreground">
+        <div className="flex items-center gap-1.5 pt-0.5 font-mono">
+          <span className="text-base text-foreground">₿</span>
+          <span className="text-primary">sats</span>
+        </div>
+        <CollapsibleTrigger className="group flex items-start gap-1 text-right outline-none hover:text-foreground focus-visible:rounded-sm focus-visible:ring-2 focus-visible:ring-ring">
+          <span>
+            <span className="block">
+              {providerCount} provider{providerCount === 1 ? "" : "s"}
+              {quotes.state === "requesting" ? " · quoting" : ""}
+            </span>
+            <span className="block">
+              {selected
+                ? `Fees · ${formatAtomicAmount(selected.maximumTotalFee)} sats`
+                : "Signed fees · —"}
+            </span>
+          </span>
+          <ChevronRightIcon className="mt-0.5 size-3.5 transition-transform duration-200 group-data-panel-open:rotate-90 motion-reduce:transition-none" />
+        </CollapsibleTrigger>
+      </div>
+      <CollapsibleContent className="pt-3">
+        {rows.length > 0 ? (
+          <div className="divide-y divide-foreground/10 border-y border-foreground/10">
+            {rows.map((quote) => (
+              <QuoteRow
+                key={quote.quoteId}
+                quote={quote}
+                selected={selected?.quoteId === quote.quoteId}
+              />
+            ))}
+          </div>
+        ) : (
+          <p className="py-2 text-right text-xs text-muted-foreground">
+            Valid provider Quotes appear here after an offered amount
+            stabilizes.
+          </p>
+        )}
+        <p className="pt-2 text-right text-[0.6875rem] text-muted-foreground">
+          Policy: highest output, then lowest total fee, then provider key.
+        </p>
+      </CollapsibleContent>
+    </Collapsible>
+  )
+}
+
+function QuoteRow({
+  quote,
+  selected,
+}: {
+  quote: ValidatedQuote
+  selected: boolean
+}) {
+  return (
+    <div
+      className="py-2.5 text-xs"
+      data-quote-provider={quote.providerPubkey}
+      data-selected={selected || undefined}
+    >
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex min-w-0 items-center gap-1.5 font-medium text-foreground">
+          {selected ? (
+            <CheckIcon className="size-3.5 text-primary" aria-hidden="true" />
+          ) : null}
+          <span>
+            {quote.providerRole === "provider-a" ? "Provider A" : "Provider B"}
+          </span>
+          <span className="truncate font-mono text-[0.625rem] text-muted-foreground">
+            {quote.providerPubkey.slice(0, 8)}
+          </span>
+        </div>
+        <span className="font-mono text-foreground">
+          {formatAtomicAmount(quote.outputAmount)} sats
+        </span>
+      </div>
+      <div className="mt-1 flex flex-wrap justify-between gap-x-3 gap-y-1 text-[0.6875rem] text-muted-foreground">
+        <span>
+          {quote.quoteClass} · {quote.reservationClass} reservation
+        </span>
+        <span>fee {formatAtomicAmount(quote.maximumTotalFee)} sats</span>
+        <span title={quote.reservationProof}>provider-signed capacity</span>
+        <QuoteCountdown deadline={quote.effectiveAcceptanceDeadline} />
+      </div>
+    </div>
+  )
+}
+
+function QuoteCountdown({ deadline }: { deadline: number }) {
+  const [now, setNow] = useState(() => Math.floor(Date.now() / 1_000))
+  useEffect(() => {
+    const timer = setInterval(
+      () => setNow(Math.floor(Date.now() / 1_000)),
+      1_000
+    )
+    return () => clearInterval(timer)
+  }, [])
+  const seconds = Math.max(0, deadline - now)
+  return <span>expires in {seconds}s</span>
+}
+
+function RuntimePopover({
+  status,
+  provenance,
+}: {
+  status: ImmortalRuntimeStatus
+  provenance: ReturnType<typeof useImmortalRuntime>["provenance"]
+}) {
+  return (
+    <Popover>
+      <PopoverTrigger
+        aria-label="Swap settings"
+        className="absolute top-4 right-4 inline-flex size-8 items-center justify-center rounded-lg text-muted-foreground transition-colors outline-none hover:bg-accent hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/30"
+      >
+        <Settings2Icon className="size-5" aria-hidden="true" />
+      </PopoverTrigger>
+      <PopoverContent
+        align="end"
+        className="w-64 rounded-xl bg-popover text-popover-foreground ring-foreground/15"
+      >
+        <PopoverHeader>
+          <PopoverTitle>Swap settings</PopoverTitle>
+          <PopoverDescription>
+            Immortal runs in this browser and connects straight to the
+            configured relay.
+          </PopoverDescription>
+        </PopoverHeader>
+        <RuntimeDisclosure status={status} />
+        <div className="flex items-center gap-2 rounded-lg bg-input p-3 text-xs text-muted-foreground">
+          <ShieldCheckIcon className="size-4 shrink-0 text-primary" />
+          Verify route and recovery paths before funding
+        </div>
+        {provenance ? (
+          <dl className="mt-2 space-y-1 rounded-lg border border-foreground/10 p-3 font-mono text-[0.625rem] text-muted-foreground">
+            <div className="flex justify-between gap-3">
+              <dt>ENGINE</dt>
+              <dd title={provenance.engine.sourceRevision}>
+                {provenance.engine.sourceRevision.slice(0, 8)}
+              </dd>
+            </div>
+            <div className="flex justify-between gap-3">
+              <dt>RELAY</dt>
+              <dd>{provenance.relay.directBrowserSocket ? "DIRECT" : "—"}</dd>
+            </div>
+            <div className="flex justify-between gap-3">
+              <dt>AUTH</dt>
+              <dd>{provenance.relay.nip42Authenticated ? "NIP-42" : "—"}</dd>
+            </div>
+            <div className="flex justify-between gap-3">
+              <dt>PROVIDERS</dt>
+              <dd>{provenance.providers.length}</dd>
+            </div>
+          </dl>
+        ) : null}
+      </PopoverContent>
+    </Popover>
   )
 }
 
@@ -361,7 +581,8 @@ function RuntimeDisclosure({ status }: { status: ImmortalRuntimeStatus }) {
     live: "Immortal live",
   }[status.state]
   const live = status.state === "live"
-  const danger = status.state === "incompatible" || status.state === "unavailable"
+  const danger =
+    status.state === "incompatible" || status.state === "unavailable"
   const detail = live ? runtimeDetail(status) : status.detail
 
   return (
@@ -374,7 +595,11 @@ function RuntimeDisclosure({ status }: { status: ImmortalRuntimeStatus }) {
       <div className="flex items-center gap-2 font-semibold text-foreground">
         <span
           className={`size-2 rounded-full ${
-            live ? "bg-primary" : danger ? "bg-destructive" : "bg-muted-foreground"
+            live
+              ? "bg-primary"
+              : danger
+                ? "bg-destructive"
+                : "bg-muted-foreground"
           }`}
           aria-hidden="true"
         />
@@ -388,4 +613,82 @@ function RuntimeDisclosure({ status }: { status: ImmortalRuntimeStatus }) {
 function runtimeDetail(status: ImmortalRuntimeStatus): string {
   if (status.state !== "live") return "Waiting for the local Immortal demo."
   return `${status.offeringCount} signed offerings · ${status.restoredSessionCount} restored sessions`
+}
+
+function directionByTicker(
+  market: ImmortalMarketSnapshot,
+  input: MarketAssetTicker,
+  output: MarketAssetTicker
+): MarketDirection | null {
+  const inputAsset = market.assets.find((asset) => asset.ticker === input)
+  const outputAsset = market.assets.find((asset) => asset.ticker === output)
+  return inputAsset && outputAsset
+    ? findDirection(market, inputAsset.id, outputAsset.id)
+    : null
+}
+
+function uniqueAssets(assets: readonly MarketAsset[]): readonly MarketAsset[] {
+  return [...new Map(assets.map((asset) => [asset.id, asset])).values()]
+}
+
+function directionHint(direction: MarketDirection | null): string {
+  return direction
+    ? `Min ${formatAtomicAmount(direction.minimum)} · Max ${formatAtomicAmount(direction.maximum)} sats`
+    : "Direction unavailable"
+}
+
+function validateAmount(
+  value: string,
+  direction: MarketDirection | null
+): { readonly valid: boolean; readonly detail: string } {
+  if (!direction?.actionable) {
+    return {
+      valid: false,
+      detail:
+        direction?.unavailableReason ??
+        "No active Offering supports this direction.",
+    }
+  }
+  if (!/^(0|[1-9][0-9]*)$/.test(value)) {
+    return { valid: false, detail: "Enter an amount in whole atomic units." }
+  }
+  const amount = BigInt(value)
+  if (
+    amount < BigInt(direction.minimum) ||
+    amount > BigInt(direction.maximum)
+  ) {
+    return {
+      valid: false,
+      detail: `Current range is ${formatAtomicAmount(direction.minimum)}–${formatAtomicAmount(direction.maximum)} sats.`,
+    }
+  }
+  return {
+    valid: true,
+    detail: "Amount is inside both providers' signed limits.",
+  }
+}
+
+function cardStatus(
+  status: ImmortalRuntimeStatus,
+  direction: MarketDirection | null,
+  amount: { readonly valid: boolean; readonly detail: string },
+  quotes: QuoteState
+): string {
+  if (status.state !== "live") return status.detail
+  if (!direction?.actionable) {
+    return (
+      direction?.unavailableReason ??
+      "No active Offering supports this direction."
+    )
+  }
+  if (!amount.valid) return amount.detail
+  if (quotes.state === "ready") {
+    return `${quotes.quotes.length} signed Quotes verified · best route selected`
+  }
+  return quotes.detail
+}
+
+function normalizeAtomicInput(value: string): string {
+  const digits = value.replace(/\D/g, "")
+  return digits.replace(/^0+(?=\d)/, "")
 }

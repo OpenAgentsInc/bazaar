@@ -8,6 +8,10 @@ import type {
   ImmortalDemoConfig,
   ImmortalDemoProvider,
 } from "./config"
+import {
+  parseImmortalDemoRequestContract,
+  RequestContractError,
+} from "./request-contract"
 
 const MAXIMUM_MANIFEST_BYTES = 32_768
 const LOWER_HEX_32 = /^[0-9a-f]{64}$/
@@ -29,7 +33,8 @@ export async function readImmortalDemoConfig(): Promise<ImmortalConfigResult> {
     return {
       state: "unavailable",
       code: "manifest_not_configured",
-      detail: "Start the Immortal demo topology and configure its manifest path.",
+      detail:
+        "Start the Immortal demo topology and configure its manifest path.",
     }
   }
 
@@ -70,12 +75,13 @@ function parseManifest(value: unknown): ImmortalDemoConfig {
     "mode",
     "relay",
     "providers",
+    "request_contract",
     "lifecycle",
     "bounds",
   ])
   requireEqual(
     document.schema,
-    "openagents.immortal.no-spend-demo-manifest.v1",
+    "openagents.immortal.no-spend-demo-manifest.v2",
     "manifest schema"
   )
   requireEqual(document.network, "regtest", "network")
@@ -96,20 +102,31 @@ function parseManifest(value: unknown): ImmortalDemoConfig {
   )
   const healthUrl = loopbackHttp(string(relay.health_url, "relay health URL"))
   const contractSha256 = string(relay.contract_sha256, "relay contract digest")
-  if (!LOWER_HEX_32.test(contractSha256)) fail("relay contract digest is invalid")
+  if (!LOWER_HEX_32.test(contractSha256))
+    fail("relay contract digest is invalid")
   const relayHealth = object(relay.health, "relay health")
   exactKeys(relayHealth, ["state"])
   requireEqual(relayHealth.state, "ready", "relay health")
   const contractIdentity = parseContractIdentity(relay.contract_identity)
 
   const providersValue = array(document.providers, "providers")
-  if (providersValue.length !== 2) fail("the demo must expose exactly two providers")
+  if (providersValue.length !== 2)
+    fail("the demo must expose exactly two providers")
   const providers = providersValue.map(parseProvider)
   if (
     new Set(providers.map((provider) => provider.role)).size !== 2 ||
     new Set(providers.map((provider) => provider.pubkey)).size !== 2
   ) {
     fail("the demo providers are not distinct")
+  }
+  let requestContract: ImmortalDemoConfig["requestContract"]
+  try {
+    requestContract = parseImmortalDemoRequestContract(
+      document.request_contract
+    )
+  } catch (cause) {
+    if (cause instanceof RequestContractError) fail(cause.message)
+    throw cause
   }
 
   const lifecycle = object(document.lifecycle, "lifecycle")
@@ -124,13 +141,21 @@ function parseManifest(value: unknown): ImmortalDemoConfig {
     "terminal path"
   )
   requireEqual(lifecycle.external_spend_effects, 0, "external spend effects")
-  requireEqual(lifecycle.close_loss_classification, "none", "loss classification")
+  requireEqual(
+    lifecycle.close_loss_classification,
+    "none",
+    "loss classification"
+  )
 
   const bounds = object(document.bounds, "bounds")
   exactKeys(bounds, ["relay_count", "provider_count", "maximum_manifest_bytes"])
   requireEqual(bounds.relay_count, 1, "relay count")
   requireEqual(bounds.provider_count, 2, "provider count")
-  requireEqual(bounds.maximum_manifest_bytes, MAXIMUM_MANIFEST_BYTES, "manifest bound")
+  requireEqual(
+    bounds.maximum_manifest_bytes,
+    MAXIMUM_MANIFEST_BYTES,
+    "manifest bound"
+  )
 
   return {
     schema: "openagents.bazaar.immortal-demo-config.v1",
@@ -139,6 +164,7 @@ function parseManifest(value: unknown): ImmortalDemoConfig {
     mode: "no_spend",
     relay: { websocketUrl, healthUrl, contractSha256, contractIdentity },
     providers: providers as [ImmortalDemoProvider, ImmortalDemoProvider],
+    requestContract,
     lifecycle: {
       terminalPath: "bilateral_contract_then_mutual_cancel",
       externalSpendEffects: 0,
@@ -156,7 +182,11 @@ function parseContractIdentity(value: unknown): ImmortalContractIdentity {
     "crate_version",
     "nips",
   ])
-  requireEqual(identity.schema, "openagents.immortal.contract.v1", "contract schema")
+  requireEqual(
+    identity.schema,
+    "openagents.immortal.contract.v1",
+    "contract schema"
+  )
   requireEqual(identity.contract_version, 1, "contract version")
   requireEqual(identity.crate_name, "immortal", "contract crate")
   const crateVersion = string(identity.crate_version, "contract crate version")
@@ -172,7 +202,8 @@ function parseContractIdentity(value: unknown): ImmortalContractIdentity {
       commit,
     }
   })
-  if (nips.length !== 3) fail("contract identity must pin exactly three NIP lanes")
+  if (nips.length !== 3)
+    fail("contract identity must pin exactly three NIP lanes")
   return {
     schema: "openagents.immortal.contract.v1",
     contractVersion: 1,
@@ -239,7 +270,10 @@ function parseProvider(value: unknown): ImmortalDemoProvider {
       reservationClass: "soft",
       quoteLifetimeSeconds,
       completionDiscountSeconds,
-      settlementClaim: string(policy.settlement_claim, "provider settlement claim"),
+      settlementClaim: string(
+        policy.settlement_claim,
+        "provider settlement claim"
+      ),
     },
     health: {
       state: "ready",
@@ -272,10 +306,16 @@ function integer(value: unknown, label: string): number {
   return value as number
 }
 
-function exactKeys(value: Record<string, unknown>, expected: readonly string[]): void {
+function exactKeys(
+  value: Record<string, unknown>,
+  expected: readonly string[]
+): void {
   const actual = Object.keys(value).sort()
   const wanted = [...expected].sort()
-  if (actual.length !== wanted.length || actual.some((key, index) => key !== wanted[index])) {
+  if (
+    actual.length !== wanted.length ||
+    actual.some((key, index) => key !== wanted[index])
+  ) {
     fail("manifest contains missing or unknown members")
   }
 }

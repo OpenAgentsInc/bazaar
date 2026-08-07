@@ -29,6 +29,26 @@ Stop the topology with Ctrl-C in its terminal. Its launcher removes only its
 owned state directory. The topology is regtest coordination-only and declares
 zero external spend effects.
 
+## Live market and Quote policy
+
+The card folds the latest signed `39600` Provider Profiles and `39601`
+Offerings after the relay's public EOSE boundary. A direction is actionable
+only when two configured active providers advertise an overlapping atomic-unit
+range and the pinned requester supports the rail. Pausing or replacing an
+Offering changes that fold immediately; an icon alone never enables a rail.
+Amounts and fees remain canonical decimal strings and `BigInt` throughout the
+browser. No floating-point value becomes an execution term.
+
+After an entered amount settles for 450 milliseconds, Bazaar creates one
+provider-bound session per eligible route and sends each provider the exact
+public RFQ constraints selected from the launcher's closed request contract.
+Every returned Quote must pass NIP-59 delivery validation, Immortal's requester
+session validation, RFQ/provider/asset/amount bindings, expiry, exact amount
+and fee arithmetic, and reservation disclosure checks. Bazaar selects the
+highest output, then the lowest maximum total fee, then the lexicographically
+lowest provider key. The disclosure shows both signed rows and their expiry;
+an expired selection is removed and refreshed rather than silently repriced.
+
 ## Custody and persistence policy
 
 - The demo requester key is generated and retained only in browser IndexedDB.
@@ -38,6 +58,9 @@ zero external spend effects.
 - Sessions store exact signed event bytes, NIP-59 delivery provenance, engine
   snapshots/views, the selected provider route, and digest-bound external
   effect requests/results.
+- Both counterparty and sender-recovery NIP-59 copies remain durable evidence.
+  The engine receives one deterministic delivery input per signed record, so
+  transport redundancy cannot become duplicate protocol evidence.
 - Writes are serialized per session. Replays with identical bytes are
   idempotent; changed bytes under an existing event or effect ID fail closed.
 - Private keys, preimages, seeds, macaroons, and equivalent settlement secrets
@@ -46,7 +69,7 @@ zero external spend effects.
 ## Pinned inputs
 
 The WASM artifact is built from Immortal revision
-`d62a4f7c6c34a11d191fe78316fd8d4ce4da1d34`. Its byte length, SHA-256,
+`69a78231ffeae5a78fe45de9aba122db00178953`. Its byte length, SHA-256,
 zero-import authority, ABI version, exported functions, requester API digest,
 and source revision are checked by `pnpm verify:immortal-artifact` and again in
 the browser before instantiation. The committed artifact is built with Rust
