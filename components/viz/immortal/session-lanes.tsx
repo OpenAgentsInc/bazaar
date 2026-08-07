@@ -12,22 +12,11 @@ import * as React from "react"
 import { useVizArrowMarkerUrl, VizScene } from "@/components/viz/core"
 import { cn } from "@/lib/utils"
 
-export type EvidenceRung =
-  | "pledged"
-  | "reserved"
-  | "measured"
-  | "verified"
-  | "paid"
-  | "settled"
+import { EVIDENCE_RUNGS, type EvidenceRung } from "./evidence-rungs"
 
-const RUNGS: readonly EvidenceRung[] = [
-  "pledged",
-  "reserved",
-  "measured",
-  "verified",
-  "paid",
-  "settled",
-]
+export type { EvidenceRung } from "./evidence-rungs"
+
+const RUNGS = EVIDENCE_RUNGS
 
 export type SessionAuthor = "requester" | "provider"
 
