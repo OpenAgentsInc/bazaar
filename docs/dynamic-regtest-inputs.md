@@ -46,6 +46,13 @@ Each provider candidate is persisted with the canonical input, commitment,
 parser package revision, and parser version next to the engine snapshot. No
 preimage, key, seed, macaroon, wallet descriptor, or node endpoint is stored.
 
+For the public profile, Bazaar sends this exact canonical request once through
+the session capability. The gateway's signed browser projection returns only
+the destination kind and SHA-256 commitment. The private canonical destination
+is handed to the isolated requester worker and retired after a terminal
+projection; it is not returned in public evidence or retained in browser
+capability metadata.
+
 ## Amount rules
 
 The form derives its actionable interval from the overlap of the currently

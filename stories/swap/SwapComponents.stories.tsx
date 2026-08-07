@@ -24,6 +24,7 @@ import {
   ASSETS,
   FUNDED_SESSION,
   INACTIVE_FUNDED_RUNTIME,
+  INACTIVE_PUBLIC_RUNTIME,
   LIGHTNING_TO_BITCOIN,
   LIVE_STATUS,
   MOCK_PROVENANCE,
@@ -32,6 +33,7 @@ import {
   READY_QUOTES,
   RUNNING_LIFECYCLE,
   UNAVAILABLE_FUNDED_CONFIG,
+  UNAVAILABLE_PUBLIC_CONFIG,
 } from "./fixtures"
 
 function StoryFrame({ children }: PropsWithChildren) {
@@ -210,6 +212,8 @@ export const SwapSettings: Story = {
         modeLocked={false}
         fundedConfig={UNAVAILABLE_FUNDED_CONFIG}
         fundedRuntime={INACTIVE_FUNDED_RUNTIME}
+        publicConfig={UNAVAILABLE_PUBLIC_CONFIG}
+        publicRuntime={INACTIVE_PUBLIC_RUNTIME}
         status={LIVE_STATUS}
         provenance={MOCK_PROVENANCE}
       />

@@ -3,7 +3,11 @@ import { expect, userEvent, within } from "storybook/test"
 
 import { SwapPage } from "@/components/swap-page"
 
-import { UNAVAILABLE_CONFIG, UNAVAILABLE_FUNDED_CONFIG } from "./fixtures"
+import {
+  UNAVAILABLE_CONFIG,
+  UNAVAILABLE_FUNDED_CONFIG,
+  UNAVAILABLE_PUBLIC_CONFIG,
+} from "./fixtures"
 
 const meta = {
   title: "Swap/Complete Swap Card",
@@ -15,6 +19,7 @@ const meta = {
   args: {
     config: UNAVAILABLE_CONFIG,
     fundedConfig: UNAVAILABLE_FUNDED_CONFIG,
+    publicConfig: UNAVAILABLE_PUBLIC_CONFIG,
   },
 } satisfies Meta<typeof SwapPage>
 

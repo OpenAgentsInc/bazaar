@@ -11,9 +11,9 @@ export const PUBLIC_REGTEST_NETWORK =
 export const PUBLIC_REGTEST_GATEWAY_CONTRACT_SCHEMA =
   "openagents.immortal.public-regtest-gateway-contract.v1" as const
 export const PUBLIC_REGTEST_GATEWAY_CONTRACT_SHA256 =
-  "f6590937247cd8a7265bed16f9fec3d8e004464a5f08e0380c19fe1c98e212fc" as const
+  "ac291cab7fc3b53b568ecc1d0c53576c4f50dc2002dd59d35ffc39c9aea55df6" as const
 export const PUBLIC_REGTEST_SERVICE_CONTRACT_SHA256 =
-  "4afd8af24f84e185b2e61d65a29ae60c849eb2da80293a131639ee15f8a861e8" as const
+  "d8bff6d86bf04f5b050e5ec7f646f5482932f9f66824121e7c6888642d787431" as const
 export const PUBLIC_REGTEST_RELAY_CONTRACT_SHA256 =
   "2dc403d00574be2c531f88468a6cadbca1fd9b3192259a5ecbd03833d55ae1cc" as const
 export const PUBLIC_REGTEST_BROWSER_ABI_VERSION = 1 as const
@@ -66,6 +66,7 @@ export interface PublicRegtestConfig {
   }
   readonly gateway: {
     readonly baseUrl: string
+    readonly signingPubkey: string
     readonly contractSchema: typeof PUBLIC_REGTEST_GATEWAY_CONTRACT_SCHEMA
     readonly contractSha256: typeof PUBLIC_REGTEST_GATEWAY_CONTRACT_SHA256
     readonly serviceContractSha256: typeof PUBLIC_REGTEST_SERVICE_CONTRACT_SHA256
@@ -266,6 +267,7 @@ function parseManifest(
   const gateway = object(document.gateway, "gateway")
   exactKeys(gateway, [
     "base_url",
+    "signing_pubkey",
     "contract_schema",
     "contract_sha256",
     "service_contract_sha256",
@@ -275,6 +277,13 @@ function parseManifest(
     "https:",
     trust.allowedHosts
   )
+  const gatewaySigningPubkey = string(
+    gateway.signing_pubkey,
+    "gateway signing pubkey"
+  )
+  if (!LOWER_HEX_32.test(gatewaySigningPubkey)) {
+    fail("public_manifest_invalid", "The gateway signing pubkey is invalid.")
+  }
   equal(
     gateway.contract_schema,
     PUBLIC_REGTEST_GATEWAY_CONTRACT_SCHEMA,
@@ -365,6 +374,7 @@ function parseManifest(
     },
     gateway: {
       baseUrl,
+      signingPubkey: gatewaySigningPubkey,
       contractSchema: PUBLIC_REGTEST_GATEWAY_CONTRACT_SCHEMA,
       contractSha256: PUBLIC_REGTEST_GATEWAY_CONTRACT_SHA256,
       serviceContractSha256: PUBLIC_REGTEST_SERVICE_CONTRACT_SHA256,

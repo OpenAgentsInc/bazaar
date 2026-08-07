@@ -198,3 +198,9 @@ The receipt is written to `target/funded-regtest-receipt.json` by default. Set
 gate `scripts/test-browser-demo-funded.sh` additionally replaces the real
 adapter process mid-run and proves its prior receipt is returned exactly after
 restart. Neither command is a production or mainnet configuration.
+
+The loopback-only mode is separate from the signed `Public · Regtest` profile.
+The public profile uses a short-lived gateway capability and Immortal's
+isolated requester worker; see
+[`public-regtest-manifest.md`](public-regtest-manifest.md). It does not expose
+local node credentials or treat provider Status as settlement proof.

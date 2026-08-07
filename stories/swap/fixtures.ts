@@ -1,4 +1,5 @@
 import type { FundedRuntimeState } from "@/hooks/use-funded-regtest"
+import type { PublicRegtestRuntimeState } from "@/hooks/use-public-regtest"
 import {
   FUNDED_REGTEST_NETWORK,
   type FundedRegtestConfigResult,
@@ -24,6 +25,7 @@ import type {
   QuoteState,
   ValidatedQuote,
 } from "@/lib/immortal/market"
+import type { PublicRegtestConfigResult } from "@/lib/immortal/public-config"
 
 export const LIGHTNING_ASSET: MarketAsset = {
   id: "swp:1:bip122:regtest:btc:lightning",
@@ -231,6 +233,12 @@ export const UNAVAILABLE_FUNDED_CONFIG: FundedRegtestConfigResult = {
   detail: "Start the local funded lab to enable this mode.",
 }
 
+export const UNAVAILABLE_PUBLIC_CONFIG: PublicRegtestConfigResult = {
+  state: "unavailable",
+  code: "public_regtest_manifest_not_configured",
+  detail: "Deploy the public regtest gateway to enable this mode.",
+}
+
 const FUNDED_EFFECT: FundedEffectRequest = {
   schema: "openagents.immortal.browser-demo-effect.v1",
   network: FUNDED_REGTEST_NETWORK,
@@ -281,4 +289,9 @@ export const READY_FUNDED_RUNTIME: FundedRuntimeState = {
 export const INACTIVE_FUNDED_RUNTIME: FundedRuntimeState = {
   state: "inactive",
   detail: "Funded regtest mode is not selected.",
+}
+
+export const INACTIVE_PUBLIC_RUNTIME: PublicRegtestRuntimeState = {
+  state: "inactive",
+  detail: "Public regtest mode is not selected.",
 }

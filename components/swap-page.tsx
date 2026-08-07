@@ -38,7 +38,13 @@ import {
   useFundedRegtest,
   type FundedRuntimeState,
 } from "@/hooks/use-funded-regtest"
+import {
+  usePublicRegtest,
+  type PublicRegtestRuntimeState,
+} from "@/hooks/use-public-regtest"
 import type { FundedRegtestConfigResult } from "@/lib/immortal/funded-config"
+import type { PublicRegtestConfigResult } from "@/lib/immortal/public-config"
+import { publicRequesterRuntimeConfig } from "@/lib/immortal/public-runtime"
 import type {
   ImmortalConfigResult,
   ImmortalRuntimeStatus,
@@ -239,20 +245,31 @@ export function AmountField({
   )
 }
 
-type SwapMode = "no_spend" | "funded_regtest"
+type SwapMode = "no_spend" | "funded_regtest" | "public_regtest"
 
 export function SwapPage({
   config,
   fundedConfig,
+  publicConfig,
 }: {
   config: ImmortalConfigResult
   fundedConfig: FundedRegtestConfigResult
+  publicConfig: PublicRegtestConfigResult
 }) {
-  const [mode, setMode] = useState<SwapMode>("no_spend")
+  const [mode, setMode] = useState<SwapMode>(() =>
+    publicConfig.state === "ready" ? "public_regtest" : "no_spend"
+  )
   const [sendTicker, setSendTicker] = useState<MarketAssetTicker>("LN")
   const [receiveTicker, setReceiveTicker] = useState<MarketAssetTicker>("BTC")
   const [sendAmount, setSendAmount] = useState("")
   const [destination, setDestination] = useState("")
+  const requesterConfig = useMemo(
+    () =>
+      mode === "public_regtest" && publicConfig.state === "ready"
+        ? publicRequesterRuntimeConfig(publicConfig.config)
+        : config,
+    [config, mode, publicConfig]
+  )
   const {
     status,
     provenance,
@@ -264,20 +281,30 @@ export function SwapPage({
     startDemo,
     retryDemo,
     runAnotherDemo,
-  } = useImmortalRuntime(config, mode === "no_spend")
+  } = useImmortalRuntime(
+    requesterConfig,
+    mode === "no_spend" || mode === "public_regtest"
+  )
   const funded = useFundedRegtest(fundedConfig, mode === "funded_regtest")
+  const publicRuntime = usePublicRegtest(
+    publicConfig,
+    status.state === "live" ? status.requesterPubkey : null,
+    mode === "public_regtest"
+  )
 
   useEffect(() => {
-    if (
-      fundedConfig.state === "ready" &&
-      window.localStorage.getItem("bazaar.swap-mode.v1") === "funded_regtest"
-    ) {
-      const frame = window.requestAnimationFrame(() =>
-        setMode("funded_regtest")
-      )
-      return () => window.cancelAnimationFrame(frame)
-    }
-  }, [fundedConfig.state])
+    const stored = window.localStorage.getItem("bazaar.swap-mode.v1")
+    const nextMode =
+      stored === "funded_regtest" && fundedConfig.state === "ready"
+        ? "funded_regtest"
+        : stored === "no_spend"
+          ? "no_spend"
+          : publicConfig.state === "ready"
+            ? "public_regtest"
+            : "no_spend"
+    const frame = window.requestAnimationFrame(() => setMode(nextMode))
+    return () => window.cancelAnimationFrame(frame)
+  }, [fundedConfig.state, publicConfig.state])
 
   function changeMode(nextMode: SwapMode) {
     setMode(nextMode)
@@ -397,9 +424,33 @@ export function SwapPage({
 
   const quoteReady = Boolean(selectedQuote && amountState.valid)
   const canCreate = quoteReady && destinationState.ok
-  const sessionActive = lifecycle.state !== "idle"
+  const publicSessionActive =
+    mode === "public_regtest" &&
+    publicRuntime.runtime.state !== "ready" &&
+    publicRuntime.runtime.state !== "complete" &&
+    publicRuntime.runtime.state !== "error"
+  const sessionActive =
+    mode === "public_regtest" ? publicSessionActive : lifecycle.state !== "idle"
 
   function submitDemo() {
+    if (mode === "public_regtest") {
+      if (publicRuntime.runtime.state === "complete") {
+        void publicRuntime.startAnother()
+        setSendAmount("")
+        setDestination("")
+        resetQuotes()
+        return
+      }
+      if (
+        publicRuntime.runtime.state === "ready" &&
+        selectedQuote &&
+        canCreate &&
+        destinationState.ok
+      ) {
+        void publicRuntime.start(selectedQuote, destinationState.destination)
+      }
+      return
+    }
     if (lifecycle.state === "complete") {
       runAnotherDemo()
       setSendAmount("")
@@ -420,7 +471,11 @@ export function SwapPage({
       <Card className="relative max-h-svh w-full max-w-[31rem] gap-0 overflow-hidden rounded-none border-border bg-card py-0 shadow-none sm:max-h-[calc(100svh-3rem)] sm:rounded-2xl">
         <CardHeader className="grid grid-cols-[1fr_auto_1fr] items-center gap-0 px-4 py-4 sm:px-[1.375rem]">
           <span className="col-start-1 h-5 w-fit self-center justify-self-start rounded-[0.1875rem] border border-border px-1.5 font-mono text-[0.625rem] leading-[1.125rem] font-medium tracking-[0.08em] text-muted-foreground">
-            {mode === "no_spend" ? "DEMO · NO-SPEND" : "REGTEST · FUNDED"}
+            {mode === "no_spend"
+              ? "DEMO · NO-SPEND"
+              : mode === "public_regtest"
+                ? "PUBLIC · REGTEST"
+                : "REGTEST · FUNDED"}
           </span>
           <CardTitle
             role="heading"
@@ -434,10 +489,13 @@ export function SwapPage({
             onModeChange={changeMode}
             modeLocked={
               lifecycle.state === "running" ||
-              funded.runtime.state === "authorizing"
+              funded.runtime.state === "authorizing" ||
+              publicSessionActive
             }
             fundedConfig={fundedConfig}
             fundedRuntime={funded.runtime}
+            publicConfig={publicConfig}
+            publicRuntime={publicRuntime.runtime}
             status={status}
             provenance={provenance}
           />
@@ -497,7 +555,12 @@ export function SwapPage({
                 </div>
               </fieldset>
 
-              {lifecycle.state === "idle" ? (
+              {mode === "public_regtest" &&
+              publicRuntime.runtime.state !== "ready" &&
+              publicRuntime.runtime.state !== "creating" &&
+              publicRuntime.runtime.state !== "inactive" ? (
+                <PublicSessionPanel runtime={publicRuntime.runtime} />
+              ) : lifecycle.state === "idle" ? (
                 <QuoteSummary quotes={quotes} direction={direction} />
               ) : (
                 <LifecyclePanel lifecycle={lifecycle} />
@@ -508,7 +571,15 @@ export function SwapPage({
                 aria-live="polite"
                 className="mt-3 min-h-4 text-center text-xs text-muted-foreground"
               >
-                {cardStatus(status, direction, amountState, quotes, lifecycle)}
+                {mode === "public_regtest"
+                  ? publicRuntime.runtime.detail
+                  : cardStatus(
+                      status,
+                      direction,
+                      amountState,
+                      quotes,
+                      lifecycle
+                    )}
               </p>
 
               <Separator className="my-4 bg-foreground/10" />
@@ -560,13 +631,23 @@ export function SwapPage({
                 type="submit"
                 size="lg"
                 disabled={
-                  lifecycle.state === "running" ||
-                  (lifecycle.state === "idle" && !canCreate)
+                  mode === "public_regtest"
+                    ? publicRuntime.runtime.state !== "complete" &&
+                      (publicRuntime.runtime.state !== "ready" || !canCreate)
+                    : lifecycle.state === "running" ||
+                      (lifecycle.state === "idle" && !canCreate)
+                }
+                data-public-regtest-state={
+                  mode === "public_regtest"
+                    ? publicRuntime.runtime.state
+                    : undefined
                 }
                 data-demo-primary-action
                 className="h-[2.625rem] w-full rounded-xl bg-primary font-bold text-primary-foreground hover:bg-primary/85 disabled:bg-secondary disabled:text-muted-foreground disabled:opacity-100"
               >
-                {primaryActionLabel(lifecycle)}
+                {mode === "public_regtest"
+                  ? publicActionLabel(publicRuntime.runtime)
+                  : primaryActionLabel(lifecycle)}
               </Button>
             </form>
           )}
@@ -956,6 +1037,78 @@ function primaryActionLabel(lifecycle: DemoLifecycleState): string {
   }[lifecycle.state]
 }
 
+function publicActionLabel(runtime: PublicRegtestRuntimeState): string {
+  return {
+    inactive: "Waiting for public regtest",
+    creating: "Creating isolated session…",
+    ready: "Create Swap",
+    submitted: "Waiting for funded Quotes…",
+    authorizing: "Authorizing exact effect…",
+    watching: "Verifying Bitcoin + Lightning…",
+    complete: "Run another public swap",
+    error: "Public session stopped",
+  }[runtime.state]
+}
+
+export function PublicSessionPanel({
+  runtime,
+}: {
+  runtime: PublicRegtestRuntimeState
+}) {
+  const manifest = "manifest" in runtime ? runtime.manifest : null
+  const journey = manifest?.journey
+  const bitcoin = journey?.requesterEvidence.find(
+    (evidence) => evidence.rail === "bitcoin"
+  )
+  const lightning = journey?.requesterEvidence.find(
+    (evidence) => evidence.rail === "lightning"
+  )
+  return (
+    <section
+      aria-label="Public funded regtest session"
+      className="mt-4 rounded-xl border border-border bg-secondary p-3"
+    >
+      <div className="flex items-center justify-between gap-3">
+        <p className="font-mono text-[0.6875rem] tracking-wide text-primary uppercase">
+          Public regtest · no mainnet value
+        </p>
+        <span className="font-mono text-[0.625rem] text-muted-foreground">
+          {journey?.stage ?? runtime.state}
+        </span>
+      </div>
+      <div className="mt-3 grid grid-cols-2 gap-2 text-xs">
+        <VerificationTile
+          label="Provider Status"
+          value={journey?.providerStatus ?? "waiting"}
+          verified={false}
+          detail="Provider claim · unverified"
+        />
+        <VerificationTile
+          label="Requester rails"
+          value={
+            bitcoin?.state === "verified" && lightning?.state === "verified"
+              ? "BTC + LN verified"
+              : "verifying"
+          }
+          verified={
+            bitcoin?.state === "verified" && lightning?.state === "verified"
+          }
+          detail="Independent requester evidence"
+        />
+      </div>
+      {journey?.selectedProviderPubkey ? (
+        <p className="mt-2 truncate text-[0.6875rem] text-muted-foreground">
+          Selected provider · {journey.selectedProviderPubkey.slice(0, 12)}…
+          {journey.unselectedReleased ? " · loser released" : ""}
+        </p>
+      ) : null}
+      {runtime.state === "error" ? (
+        <p className="mt-2 text-xs text-destructive">{runtime.detail}</p>
+      ) : null}
+    </section>
+  )
+}
+
 export function QuoteSummary({
   quotes,
   direction,
@@ -1086,6 +1239,8 @@ export function RuntimePopover({
   modeLocked,
   fundedConfig,
   fundedRuntime,
+  publicConfig,
+  publicRuntime,
   status,
   provenance,
 }: {
@@ -1094,6 +1249,8 @@ export function RuntimePopover({
   modeLocked: boolean
   fundedConfig: FundedRegtestConfigResult
   fundedRuntime: FundedRuntimeState
+  publicConfig: PublicRegtestConfigResult
+  publicRuntime: PublicRegtestRuntimeState
   status: ImmortalRuntimeStatus
   provenance: ReturnType<typeof useImmortalRuntime>["provenance"]
 }) {
@@ -1125,7 +1282,11 @@ export function RuntimePopover({
           value={mode}
           disabled={modeLocked}
           onValueChange={(value) => {
-            if (value === "no_spend" || value === "funded_regtest") {
+            if (
+              value === "no_spend" ||
+              value === "funded_regtest" ||
+              value === "public_regtest"
+            ) {
               onModeChange(value)
             }
           }}
@@ -1136,6 +1297,12 @@ export function RuntimePopover({
           <SelectContent>
             <SelectItem value="no_spend">Demo · No-spend</SelectItem>
             <SelectItem
+              value="public_regtest"
+              disabled={publicConfig.state !== "ready"}
+            >
+              Public · Regtest
+            </SelectItem>
+            <SelectItem
               value="funded_regtest"
               disabled={fundedConfig.state !== "ready"}
             >
@@ -1145,6 +1312,8 @@ export function RuntimePopover({
         </Select>
         {mode === "no_spend" ? (
           <RuntimeDisclosure status={status} />
+        ) : mode === "public_regtest" ? (
+          <PublicRuntimeDisclosure runtime={publicRuntime} />
         ) : (
           <FundedRuntimeDisclosure runtime={fundedRuntime} />
         )}
@@ -1153,13 +1322,20 @@ export function RuntimePopover({
             Funded mode: {fundedConfig.detail}
           </p>
         ) : null}
+        {publicConfig.state !== "ready" ? (
+          <p className="mb-2 text-[0.6875rem] text-muted-foreground">
+            Public mode: {publicConfig.detail}
+          </p>
+        ) : null}
         <div className="flex items-center gap-2 rounded-lg bg-secondary p-3 text-xs text-muted-foreground">
           <ShieldCheckIcon className="size-4 shrink-0 text-primary" />
           {mode === "no_spend"
             ? "Verify route and recovery paths before funding"
-            : "Only the displayed engine effect can be authorized"}
+            : mode === "public_regtest"
+              ? "A short-lived capability admits only the exact engine effect"
+              : "Only the displayed engine effect can be authorized"}
         </div>
-        {mode === "no_spend" && provenance ? (
+        {(mode === "no_spend" || mode === "public_regtest") && provenance ? (
           <dl className="mt-2 space-y-1 rounded-lg border border-foreground/10 p-3 font-mono text-[0.625rem] text-muted-foreground">
             <div className="flex justify-between gap-3">
               <dt>ENGINE</dt>
@@ -1183,6 +1359,38 @@ export function RuntimePopover({
         ) : null}
       </PopoverContent>
     </Popover>
+  )
+}
+
+export function PublicRuntimeDisclosure({
+  runtime,
+}: {
+  runtime: PublicRegtestRuntimeState
+}) {
+  const live = runtime.state === "ready" || runtime.state === "complete"
+  const danger = runtime.state === "error"
+  return (
+    <div
+      data-public-runtime-state={runtime.state}
+      role="status"
+      aria-live="polite"
+      className="mb-2 rounded-lg border border-border bg-secondary p-3 text-xs"
+    >
+      <div className="flex items-center gap-2 font-semibold text-foreground">
+        <span
+          className={`size-2 rounded-full ${
+            live
+              ? "bg-primary"
+              : danger
+                ? "bg-destructive"
+                : "bg-muted-foreground"
+          }`}
+          aria-hidden="true"
+        />
+        Public regtest · {runtime.state}
+      </div>
+      <p className="mt-1 text-muted-foreground">{runtime.detail}</p>
+    </div>
   )
 }
 

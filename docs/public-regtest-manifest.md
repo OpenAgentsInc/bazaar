@@ -70,7 +70,40 @@ events. A two-relay manifest is attempted in signed order; reconnect rotates
 deterministically while retaining the same browser identity and reopening
 snapshots before live delivery.
 
+## Capability-scoped funded sessions
+
+When the signed launch is live, `Public · Regtest` is the default card mode.
+After the browser requester identity is ready, Bazaar creates one isolated
+gateway session and retains its 256-bit capability only in `sessionStorage`.
+The capability is sent only in the `Authorization: ImmortalRegtest …` header;
+it is never placed in a URL, query string, request body, rendered status,
+analytics, or error text. Reload in the same tab restores the exact session,
+while another tab receives a distinct capability.
+
+The gateway signing key is independently pinned as `gateway.signing_pubkey` in
+the deployment-signed launch. Bazaar verifies every kind-27236 session manifest
+against that key, canonical JSON content, exact origin, session, network,
+Immortal revision, requester ABI, provider set, quotas, and operation inventory.
+The browser submits the locally validated canonical destination and amount once
+to `POST /v1/public-regtest/sessions/{id}/requests`. The signed public projection
+contains only a destination commitment and safe journey evidence; the private
+destination is not echoed into the card.
+
+Immortal's requester worker obtains two funded Quotes, selects deterministically,
+releases the loser, and exposes only its exact authorized Bitcoin-broadcast or
+Lightning-payment effect. Bazaar replays that exact effect to the capability
+endpoint and never receives wallet credentials or node authority. Provider
+Status remains explicitly labeled an unverified counterparty claim. The card
+shows completion only after the signed journey reports loser release plus
+independent requester-verified Bitcoin and Lightning rail evidence.
+
+`lib/immortal/public-session.test.ts` covers signer/content mutation and ensures
+the capability remains confined to tab storage and the authorization header.
+Remote HTTPS/WSS, reload/recovery, multi-browser isolation, concurrency, and
+fault acceptance remain deployment gates rather than claims made by unit tests.
+
 Run `pnpm test` for signature, expiry, duplicate/unknown member, digest,
 network, origin, hostile URL, bounded fetch/LKG, CSP, NIP-11, authentication,
-snapshot, and failover coverage. `pnpm build` proves the nonce proxy and App
-Router production bundle together.
+snapshot, capability confinement, gateway-manifest binding, and failover
+coverage. `pnpm build` proves the nonce proxy and App Router production bundle
+together.

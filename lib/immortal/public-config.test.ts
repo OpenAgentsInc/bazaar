@@ -99,6 +99,7 @@ function manifest() {
     },
     gateway: {
       base_url: "https://gateway.example.com",
+      signing_pubkey: "88".repeat(32),
       contract_schema: PUBLIC_REGTEST_GATEWAY_CONTRACT_SCHEMA,
       contract_sha256: PUBLIC_REGTEST_GATEWAY_CONTRACT_SHA256,
       service_contract_sha256: PUBLIC_REGTEST_SERVICE_CONTRACT_SHA256,
