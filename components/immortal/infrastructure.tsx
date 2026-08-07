@@ -1,6 +1,5 @@
 import {
   Bitcoin,
-  Check,
   CheckCircle2,
   CircleDashed,
   Globe2,
@@ -14,6 +13,10 @@ import {
 } from "lucide-react"
 
 import { Badge } from "@/components/ui/badge"
+import {
+  ImmortalNetworkTopologyScene,
+  type NetworkTopologyStates,
+} from "@/components/viz/immortal/network-topology"
 import {
   Card,
   CardAction,
@@ -65,7 +68,13 @@ export function ImmortalServiceReadiness({
   )
 }
 
-export function ImmortalNetworkTopology() {
+export function ImmortalNetworkTopology({
+  states,
+  socketState,
+}: {
+  states?: NetworkTopologyStates
+  socketState?: string
+} = {}) {
   return (
     <Card size="sm">
       <CardHeader>
@@ -82,40 +91,10 @@ export function ImmortalNetworkTopology() {
         </CardAction>
       </CardHeader>
       <CardContent>
-        <div className="grid gap-3 sm:grid-cols-[1fr_auto_1fr] sm:items-center">
-          <TopologyColumn
-            title="Browser requester"
-            icon={WalletCards}
-            items={["TypeScript host", "Immortal WASM", "Requester CLN"]}
-          />
-          <div className="hidden flex-col items-center gap-1 text-[0.625rem] text-muted-foreground sm:flex">
-            <Radio className="size-4 text-primary" />
-            <span>HTTPS/WSS</span>
-          </div>
-          <div className="space-y-3">
-            <TopologyColumn
-              title="Relay fabric"
-              icon={Radio}
-              items={["relay-a + Postgres", "relay-b + Postgres"]}
-            />
-            <TopologyColumn
-              title="Provider rails"
-              icon={Server}
-              items={[
-                "provider-a · bitcoind + CLN",
-                "provider-b · bitcoind + CLN",
-              ]}
-            />
-          </div>
-        </div>
-        <div className="mt-3 rounded-xl border border-border p-3">
-          <p className="text-xs font-medium">Lightning channel graph</p>
-          <div className="mt-2 flex flex-wrap gap-1.5">
-            <Badge variant="outline">A ↔ requester</Badge>
-            <Badge variant="outline">B ↔ requester</Badge>
-            <Badge variant="outline">A ↔ B</Badge>
-          </div>
-        </div>
+        <ImmortalNetworkTopologyScene
+          states={states}
+          socketState={socketState}
+        />
       </CardContent>
       <CardFooter className="gap-2 border-t text-xs text-muted-foreground">
         <TriangleAlert aria-hidden="true" className="size-4 text-amber-500" />
@@ -346,32 +325,3 @@ function ServiceRow({ service }: { service: ImmortalService }) {
   )
 }
 
-function TopologyColumn({
-  title,
-  icon: Icon,
-  items,
-}: {
-  title: string
-  icon: typeof Radio
-  items: readonly string[]
-}) {
-  return (
-    <section className="rounded-xl border border-border p-3">
-      <p className="flex items-center gap-2 text-sm font-semibold">
-        <Icon aria-hidden="true" className="size-4 text-primary" />
-        {title}
-      </p>
-      <ul className="mt-2 space-y-1.5">
-        {items.map((item) => (
-          <li
-            key={item}
-            className="flex items-center gap-2 text-xs text-muted-foreground"
-          >
-            <Check aria-hidden="true" className="size-3 text-emerald-500" />
-            {item}
-          </li>
-        ))}
-      </ul>
-    </section>
-  )
-}

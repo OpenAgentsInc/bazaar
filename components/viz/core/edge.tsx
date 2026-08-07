@@ -68,8 +68,17 @@ export interface VizEdgeProps {
   /** Secondary mono annotation rendered after the label (e.g. a state). */
   state?: string
   head?: "none" | "arrow" | "arc"
+  /** Accessible name override; defaults to `label — state`. */
+  title?: string
+  /** Label position along the path (textPath startOffset), default "50%". */
+  labelOffset?: string
   paddingFrom?: number
   paddingTo?: number
+  /**
+   * Intermediate waypoints between the two surface anchors (e.g. a gift-wrap
+   * route passing a relay). The path becomes a polyline; the label follows it.
+   */
+  route?: ReadonlyArray<{ x: number; y: number }>
   dimmed?: boolean
   className?: string
 }
@@ -81,8 +90,11 @@ export function VizEdge({
   label,
   state,
   head = "none",
+  title,
+  labelOffset = "50%",
   paddingFrom = 2,
   paddingTo = 2,
+  route,
   dimmed = false,
   className,
 }: VizEdgeProps) {
@@ -93,13 +105,52 @@ export function VizEdge({
   const markerUrl = useVizArrowMarkerUrl(style.tone)
 
   const headPaddingTo = head === "arc" ? paddingTo + 4 : paddingTo
-  const geometry = edgeGeometry(from, to, paddingFrom, headPaddingTo)
+  const geometry = React.useMemo(() => {
+    if (!route || route.length === 0) {
+      return edgeGeometry(from, to, paddingFrom, headPaddingTo)
+    }
+    // Polyline: surface-anchor the first and last segments, thread waypoints.
+    const first = route[0]!
+    const last = route[route.length - 1]!
+    const start = edgeGeometry(
+      from,
+      { x: first.x, y: first.y, shape: "circle", r: 0 },
+      paddingFrom,
+      0
+    )
+    const end = edgeGeometry(
+      { x: last.x, y: last.y, shape: "circle", r: 0 },
+      to,
+      0,
+      headPaddingTo
+    )
+    const points = [
+      { x: start.x0, y: start.y0 },
+      ...route,
+      { x: end.x1, y: end.y1 },
+    ]
+    const d = points
+      .map((p, i) => `${i === 0 ? "M" : "L"} ${p.x} ${p.y}`)
+      .join(" ")
+    const dInverted = [...points]
+      .reverse()
+      .map((p, i) => `${i === 0 ? "M" : "L"} ${p.x} ${p.y}`)
+      .join(" ")
+    return {
+      ...end,
+      d,
+      dInverted,
+      x0: start.x0,
+      y0: start.y0,
+      ux: start.ux,
+      uy: start.uy,
+    }
+  }, [from, to, route, paddingFrom, headPaddingTo])
   // Keep the label upright: flip the text path when the edge points left.
   const textD = geometry.x1 >= geometry.x0 - 1 ? geometry.d : geometry.dInverted
 
-  const accessibleName = label
-    ? `${label}${state ? ` — ${state}` : ""}`
-    : undefined
+  const accessibleName =
+    title ?? (label ? `${label}${state ? ` — ${state}` : ""}` : undefined)
 
   const doubleOffset = 1.4
   const nx = -geometry.uy * doubleOffset
@@ -164,7 +215,11 @@ export function VizEdge({
             dy={-4}
             style={{ fill: "var(--viz-muted)" }}
           >
-            <textPath href={`#${textPathId}`} startOffset="50%" textAnchor="middle">
+            <textPath
+              href={`#${textPathId}`}
+              startOffset={labelOffset}
+              textAnchor="middle"
+            >
               {label}
               {state ? (
                 <tspan style={{ fill: style.stroke }}>{` · ${state}`}</tspan>
