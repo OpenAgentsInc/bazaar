@@ -24,7 +24,7 @@ function Frame({
 }
 
 const meta = {
-  title: "Immortal/Network Topology",
+  title: "Immortal Viz/Network Topology",
   parameters: { layout: "fullscreen" },
 } satisfies Meta
 

@@ -47,7 +47,7 @@ function Panel({
 }
 
 const meta = {
-  title: "Immortal/Instruments",
+  title: "Immortal Viz/Instruments",
   parameters: { layout: "fullscreen" },
 } satisfies Meta
 

@@ -15,7 +15,7 @@ function Frame({ children }: { children: React.ReactNode }) {
 }
 
 const meta = {
-  title: "Immortal/Session Sequence",
+  title: "Immortal Viz/Session Sequence",
   parameters: { layout: "fullscreen" },
 } satisfies Meta
 

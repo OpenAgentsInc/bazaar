@@ -53,7 +53,7 @@ function Panel({
 }
 
 const meta = {
-  title: "Immortal/Viz Primitives",
+  title: "Immortal Viz/Primitives",
   parameters: { layout: "fullscreen" },
 } satisfies Meta
 

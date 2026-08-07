@@ -12,7 +12,7 @@ function Frame({ children }: { children: React.ReactNode }) {
 }
 
 const meta = {
-  title: "Immortal/Swap Flow",
+  title: "Immortal Viz/Swap Flow",
   parameters: { layout: "fullscreen" },
 } satisfies Meta
 
