@@ -1,0 +1,14 @@
+{
+  "schema": "openagents.bazaar.immortal-browser-artifact.v1",
+  "source_repository": "https://github.com/OpenAgentsInc/immortal",
+  "source_revision": "d62a4f7c6c34a11d191fe78316fd8d4ce4da1d34",
+  "asset": "/immortal/immortal_client_web.wasm",
+  "sha256": "aee4e846a1bfb331ab3896c246e6d93ea1fcb2ef82adb4caf229760fc9cbc088",
+  "bytes": 3735499,
+  "abi_version": 1,
+  "requester_api_sha256": "bf52fda5f4d349fbbe195e4cff58af59a3930e1ee8ab1f1413b6338ba44fb3a8",
+  "wasm_imports": 0,
+  "rustc": "rustc 1.95.0 (59807616e 2026-04-14)",
+  "cargo": "cargo 1.95.0 (f2d3ce0bd 2026-03-21)",
+  "build": "IMMORTAL_SOURCE_DIR=/absolute/path/to/immortal scripts/build-immortal-artifact.sh"
+}

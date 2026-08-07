@@ -1,0 +1,78 @@
+{
+  "schema": "openagents.immortal.no-spend-demo-manifest.v1",
+  "source_revision": "8368fa90844bf0dfd8b27f43e6dba160e3795347",
+  "network": "regtest",
+  "mode": "no_spend",
+  "relay": {
+    "websocket_url": "ws://127.0.0.1:18182",
+    "health_url": "http://127.0.0.1:18182/health",
+    "contract_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "contract_identity": {
+      "schema": "openagents.immortal.contract.v1",
+      "contract_version": 1,
+      "crate_name": "immortal",
+      "crate_version": "0.1.0",
+      "nips": [
+        {
+          "lane": "market",
+          "repo": "openagents",
+          "subdir": "nips/market",
+          "commit": "1111111111111111111111111111111111111111"
+        },
+        {
+          "lane": "relay",
+          "repo": "openagents",
+          "subdir": "nips/relay",
+          "commit": "2222222222222222222222222222222222222222"
+        },
+        {
+          "lane": "swap",
+          "repo": "openagents",
+          "subdir": "nips/swap",
+          "commit": "3333333333333333333333333333333333333333"
+        }
+      ]
+    },
+    "health": { "state": "ready" }
+  },
+  "providers": [
+    {
+      "role": "provider-a",
+      "pubkey": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "offering_coordinate": "39601:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:submarine-btc-ln",
+      "policy": {
+        "variant": "fast",
+        "quote_class": "firm",
+        "reservation_class": "soft",
+        "quote_lifetime_seconds": 30,
+        "completion_discount_seconds": 5,
+        "settlement_claim": "demo-only"
+      },
+      "health": { "state": "ready", "restart_count": 0 }
+    },
+    {
+      "role": "provider-b",
+      "pubkey": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "offering_coordinate": "39601:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb:submarine-btc-ln",
+      "policy": {
+        "variant": "cheap",
+        "quote_class": "firm",
+        "reservation_class": "soft",
+        "quote_lifetime_seconds": 45,
+        "completion_discount_seconds": 10,
+        "settlement_claim": "demo-only"
+      },
+      "health": { "state": "ready", "restart_count": 0 }
+    }
+  ],
+  "lifecycle": {
+    "terminal_path": "bilateral_contract_then_mutual_cancel",
+    "external_spend_effects": 0,
+    "close_loss_classification": "none"
+  },
+  "bounds": {
+    "relay_count": 1,
+    "provider_count": 2,
+    "maximum_manifest_bytes": 32768
+  }
+}
