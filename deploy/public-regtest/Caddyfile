@@ -1,0 +1,25 @@
+{
+	email ops@openagents.com
+}
+
+relay-a.34-41-78-122.nip.io {
+	reverse_proxy 127.0.0.1:18080
+	header Strict-Transport-Security "max-age=31536000; includeSubDomains"
+}
+
+relay-b.34-41-78-122.sslip.io {
+	reverse_proxy 127.0.0.1:18081
+	header Strict-Transport-Security "max-age=31536000; includeSubDomains"
+}
+
+gateway.34-41-78-122.sslip.io {
+	reverse_proxy 127.0.0.1:19337 {
+		header_up X-Immortal-Client-IP {remote_host}
+	}
+	header {
+		Cache-Control "no-store"
+		Content-Security-Policy "default-src 'none'; frame-ancestors 'none'"
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options "nosniff"
+	}
+}

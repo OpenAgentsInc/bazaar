@@ -11,7 +11,7 @@ export const PUBLIC_REGTEST_NETWORK =
 export const PUBLIC_REGTEST_GATEWAY_CONTRACT_SCHEMA =
   "openagents.immortal.public-regtest-gateway-contract.v1" as const
 export const PUBLIC_REGTEST_GATEWAY_CONTRACT_SHA256 =
-  "ac291cab7fc3b53b568ecc1d0c53576c4f50dc2002dd59d35ffc39c9aea55df6" as const
+  "3f54404a874ecc99caaadf929d85ce0a372d9f3cb978656b9fe5be4c6b88ca93" as const
 export const PUBLIC_REGTEST_SERVICE_CONTRACT_SHA256 =
   "d8bff6d86bf04f5b050e5ec7f646f5482932f9f66824121e7c6888642d787431" as const
 export const PUBLIC_REGTEST_RELAY_CONTRACT_SHA256 =

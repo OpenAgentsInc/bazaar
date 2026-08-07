@@ -263,6 +263,9 @@ export function SwapPage({
   const [receiveTicker, setReceiveTicker] = useState<MarketAssetTicker>("BTC")
   const [sendAmount, setSendAmount] = useState("")
   const [destination, setDestination] = useState("")
+  const [demoInputState, setDemoInputState] = useState<
+    "idle" | "loading" | "error"
+  >("idle")
   const requesterConfig = useMemo(
     () =>
       mode === "public_regtest" && publicConfig.state === "ready"
@@ -399,18 +402,44 @@ export function SwapPage({
     }
     setSendAmount("")
     setDestination("")
+    setDemoInputState("idle")
     resetQuotes()
   }
 
   function changeReceiveAsset(nextTicker: MarketAssetTicker) {
     setReceiveTicker(nextTicker)
     setDestination("")
+    setDemoInputState("idle")
     resetQuotes()
   }
 
   function changeAmount(value: string) {
     setSendAmount(value)
+    setDestination("")
+    setDemoInputState("idle")
     resetQuotes()
+  }
+
+  async function allocatePublicDemoInput() {
+    if (
+      mode !== "public_regtest" ||
+      !swapType ||
+      !amountState.valid ||
+      publicRuntime.runtime.state !== "ready"
+    ) {
+      return
+    }
+    setDemoInputState("loading")
+    try {
+      const input = await publicRuntime.allocateInput(
+        swapType,
+        Number(sendAmount)
+      )
+      setDestination(input.destination)
+      setDemoInputState("idle")
+    } catch {
+      setDemoInputState("error")
+    }
   }
 
   function reverseSwap() {
@@ -595,6 +624,7 @@ export function SwapPage({
                 disabled={sessionActive}
                 onChange={(event) => {
                   setDestination(event.target.value)
+                  setDemoInputState("idle")
                   resetQuotes()
                 }}
                 placeholder={destinationLabel}
@@ -603,6 +633,28 @@ export function SwapPage({
                 spellCheck={false}
                 className="h-[2.625rem] rounded-xl border-border bg-secondary text-center text-sm placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-ring/25"
               />
+              {mode === "public_regtest" ? (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  disabled={
+                    sessionActive ||
+                    !swapType ||
+                    !amountState.valid ||
+                    publicRuntime.runtime.state !== "ready" ||
+                    demoInputState === "loading"
+                  }
+                  onClick={() => void allocatePublicDemoInput()}
+                  className="mx-auto mt-1 flex h-7 px-2 text-[0.6875rem] text-primary"
+                >
+                  {demoInputState === "loading"
+                    ? "Creating private demo destination…"
+                    : receiveTicker === "BTC"
+                      ? "Generate demo bcrt1 address"
+                      : "Generate amount-matched demo invoice"}
+                </Button>
+              ) : null}
               <p
                 id="destination-validation"
                 role={
@@ -616,13 +668,15 @@ export function SwapPage({
                     : "text-muted-foreground"
                 }`}
               >
-                {destination.length === 0
-                  ? receiveTicker === "BTC"
-                    ? "bcrt1 only · BOLT12, LNURL, and Liquid unavailable"
-                    : "Amount-bearing lnbcrt BOLT11 only · BOLT12 and LNURL unavailable"
-                  : destinationState.ok
-                    ? `${destinationState.destination.kind === "bitcoin_address" ? "Regtest address" : "Regtest BOLT11 invoice"} verified locally`
-                    : destinationState.message}
+                {demoInputState === "error"
+                  ? "Could not allocate a private demo destination. Try a new session."
+                  : destination.length === 0
+                    ? receiveTicker === "BTC"
+                      ? "bcrt1 only · BOLT12, LNURL, and Liquid unavailable"
+                      : "Amount-bearing lnbcrt BOLT11 only · BOLT12 and LNURL unavailable"
+                    : destinationState.ok
+                      ? `${destinationState.destination.kind === "bitcoin_address" ? "Regtest address" : "Regtest BOLT11 invoice"} verified locally`
+                      : destinationState.message}
               </p>
 
               <Separator className="my-4 bg-foreground/10" />

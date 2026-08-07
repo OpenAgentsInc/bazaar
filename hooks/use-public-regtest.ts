@@ -279,6 +279,23 @@ export function usePublicRegtest(
     [setRuntime]
   )
 
+  const allocateInput = useCallback(
+    async (swapType: "reverse" | "submarine", amountSat: number) => {
+      const client = clientRef.current
+      const capability = capabilityRef.current
+      if (!client || !capability || runtimeRef.current.state !== "ready") {
+        throw new PublicRegtestGatewayError(
+          "demo_input_unavailable",
+          true,
+          null,
+          "The isolated public regtest session is not ready."
+        )
+      }
+      return client.allocateDemoInput(capability, swapType, amountSat)
+    },
+    []
+  )
+
   const startAnother = useCallback(async () => {
     const client = clientRef.current
     const capability = capabilityRef.current
@@ -297,7 +314,7 @@ export function usePublicRegtest(
     }
   }, [requesterIdentity, setRuntime])
 
-  return { runtime, start, startAnother, refresh }
+  return { runtime, allocateInput, start, startAnother, refresh }
 }
 
 function manifestFromState(

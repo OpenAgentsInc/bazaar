@@ -89,6 +89,14 @@ to `POST /v1/public-regtest/sessions/{id}/requests`. The signed public projectio
 contains only a destination commitment and safe journey evidence; the private
 destination is not echoed into the card.
 
+For the public demo, the user may ask the isolated requester worker to allocate
+one destination through `POST /v1/public-regtest/sessions/{id}/inputs`. Reverse
+swaps receive a fresh requester `bcrt1` address; submarine swaps receive a fresh
+amount-bearing `lnbcrt` invoice. The response is bound to that session,
+direction, amount, and expiry. It is idempotent for an exact retry and fails
+closed if any bound value changes. The capability remains confined to the
+authorization header.
+
 Immortal's requester worker obtains two funded Quotes, selects deterministically,
 releases the loser, and exposes only its exact authorized Bitcoin-broadcast or
 Lightning-payment effect. Bazaar replays that exact effect to the capability
@@ -107,3 +115,69 @@ network, origin, hostile URL, bounded fetch/LKG, CSP, NIP-11, authentication,
 snapshot, capability confinement, gateway-manifest binding, and failover
 coverage. `pnpm build` proves the nonce proxy and App Router production bundle
 together.
+
+## Production release and operation
+
+The current public deployment uses these exact authorities:
+
+```text
+https://bazaar.openagents.com
+https://gateway.34-41-78-122.sslip.io
+wss://relay-a.34-41-78-122.nip.io
+wss://relay-b.34-41-78-122.sslip.io
+```
+
+The gateway host exposes only TCP 443. Bitcoin RPC/P2P, Lightning RPC, relay
+backends, Postgres, wallet workers, and mining controls remain on the private
+Docker network. `deploy/public-regtest/Caddyfile` is the reviewed public TLS and
+origin boundary installed on the service host.
+
+Create a launch signing secret in an operator secret manager, then generate the
+short-lived envelope without printing the secret:
+
+```sh
+BAZAAR_PUBLIC_REGTEST_SIGNING_SECRET='<64 lower hex>' \
+  node scripts/create-public-regtest-launch-manifest.mjs \
+  --output /secure/path/public-regtest-envelope.json \
+  --bazaar-revision '<deployed Bazaar commit>' \
+  --immortal-revision '<deployed Immortal commit>'
+```
+
+Configure the production deployment with the signer printed by that command,
+the exact two revisions, exact origin, sorted allowed hosts, and the complete
+envelope as `BAZAAR_PUBLIC_REGTEST_MANIFEST`. Never configure the signing secret
+in Vercel. Deploy only after `/readyz` is true and the manifest validates against
+the intended build. Preview origins are intentionally excluded and therefore
+cannot obtain a capability.
+
+Rotate the envelope before its 24-hour signed expiry. A rotation keeps the same
+signing key and revisions, creates a new envelope, updates only
+`BAZAAR_PUBLIC_REGTEST_MANIFEST`, and redeploys. Rotate the signing key by
+updating the signer and envelope together in one deployment. The old deployment
+continues to recover its already admitted gateway sessions; the new launch
+controls only new browser admission.
+
+For an emergency stop, first make gateway readiness false, then remove the
+production manifest and redeploy. This prevents new sessions while the gateway
+retains bounded status/recovery for admitted sessions. Do not destroy service
+state as a shutdown mechanism.
+
+For rollback, restore the previous compatible Vercel deployment together with
+its exact manifest, Bazaar revision, Immortal revision, and WASM pins. Never pair
+an old app with a new manifest. Verify `/readyz`, CSP, and both relays before
+promoting. Revision or contract drift fails closed before funding.
+
+Run the external release gate from a machine outside the service network:
+
+```sh
+BAZAAR_PUBLIC_REGTEST_BAZAAR_REVISION='<deployed Bazaar commit>' \
+BAZAAR_PUBLIC_REGTEST_IMMORTAL_REVISION='<deployed Immortal commit>' \
+  pnpm test:public-regtest
+```
+
+It completes reverse and submarine funded journeys, reloads an admitted
+session, proves new-session and second-tab isolation, checks browser network
+authorities, and writes a versioned public-safe receipt. The receipt scanner
+rejects capabilities, destinations, invoices, custody fields, and raw
+transactions. Bazaar deliberately has no analytics SDK; browser state and the
+acceptance receipt are the only client-side operational records.

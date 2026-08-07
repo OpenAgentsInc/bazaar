@@ -19,6 +19,10 @@ const DYNAMIC_SUBMISSION_SCHEMA =
   "openagents.immortal.public-regtest-dynamic-submission.v1"
 const DYNAMIC_REQUEST_SCHEMA =
   "openagents.immortal.dynamic-public-regtest-request.v1"
+const DEMO_INPUT_REQUEST_SCHEMA =
+  "openagents.immortal.public-regtest-demo-input-request.v1"
+const DEMO_INPUT_RESPONSE_SCHEMA =
+  "openagents.immortal.public-regtest-demo-input.v1"
 const JOURNEY_SCHEMA = "openagents.immortal.public-regtest-journey.v1"
 const EFFECT_SCHEMA = "openagents.immortal.public-regtest-effect.v1"
 const BROWSER_EFFECT_SCHEMA = "openagents.immortal.browser-demo-effect.v1"
@@ -113,6 +117,13 @@ export interface PublicRegtestSessionManifest {
   readonly journey: PublicRegtestJourney | null
   readonly effects: readonly PublicRegtestEffect[]
   readonly signatureEventId: string
+}
+
+export interface PublicRegtestDemoInput {
+  readonly swapType: "reverse" | "submarine"
+  readonly amountSat: number
+  readonly destination: string
+  readonly expiresAt: number
 }
 
 export interface PublicSessionStorage {
@@ -261,6 +272,46 @@ export class PublicRegtestGatewayClient {
           request,
         }),
       }
+    )
+  }
+
+  async allocateDemoInput(
+    capability: PublicRegtestCapability,
+    swapType: "reverse" | "submarine",
+    amountSat: number
+  ): Promise<PublicRegtestDemoInput> {
+    assertEffectAuthorityActive(capability)
+    if (
+      !Number.isSafeInteger(amountSat) ||
+      amountSat < 10_000 ||
+      amountSat > 1_000_000
+    ) {
+      throw new PublicRegtestGatewayError(
+        "demo_input_refused",
+        false,
+        null,
+        "The demo amount is outside the public regtest range."
+      )
+    }
+    const value = await this.authorizedFetch(
+      capability,
+      `/v1/public-regtest/sessions/${capability.sandboxSessionId}/inputs`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          schema: DEMO_INPUT_REQUEST_SCHEMA,
+          sandbox_session_id: capability.sandboxSessionId,
+          swap_type: swapType,
+          amount_sat: amountSat,
+        }),
+      }
+    )
+    return parseDemoInput(
+      value,
+      capability.sandboxSessionId,
+      swapType,
+      amountSat
     )
   }
 
@@ -423,6 +474,7 @@ export function parseSignedGatewayManifest(
   if (
     canonicalJson(operations) !==
     canonicalJson([
+      "allocate_demo_input",
       "submit_dynamic_request",
       "broadcast_bitcoin_funding",
       "pay_lightning_invoice",
@@ -466,6 +518,40 @@ export function parseSignedGatewayManifest(
     effects,
     signatureEventId: event.id,
   }
+}
+
+function parseDemoInput(
+  value: unknown,
+  sandboxSessionId: string,
+  swapType: "reverse" | "submarine",
+  amountSat: number,
+  now = Math.floor(Date.now() / 1_000)
+): PublicRegtestDemoInput {
+  const input = object(value, "demo input")
+  exactKeys(input, [
+    "schema",
+    "sandbox_session_id",
+    "swap_type",
+    "amount_sat",
+    "destination",
+    "expires_at",
+  ])
+  equal(input.schema, DEMO_INPUT_RESPONSE_SCHEMA, "demo input schema")
+  equal(input.sandbox_session_id, sandboxSessionId, "demo input session")
+  equal(input.swap_type, swapType, "demo input direction")
+  equal(input.amount_sat, amountSat, "demo input amount")
+  const destination = boundedString(input.destination, "demo destination")
+  const prefix = swapType === "reverse" ? "bcrt1" : "lnbcrt"
+  const expiresAt = integer(input.expires_at, "demo input expiry")
+  if (
+    !destination.startsWith(prefix) ||
+    destination.length > 8_192 ||
+    expiresAt <= now ||
+    expiresAt > now + 600
+  ) {
+    fail("The demo input is outside the public regtest contract.")
+  }
+  return { swapType, amountSat, destination, expiresAt }
 }
 
 function parseDynamicRequestView(value: unknown): PublicDynamicRequestView {

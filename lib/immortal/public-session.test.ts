@@ -112,6 +112,7 @@ function manifest(config: PublicRegtestConfig) {
       maximum_requests: 64,
     },
     allowed_operations: [
+      "allocate_demo_input",
       "submit_dynamic_request",
       "broadcast_bitcoin_funding",
       "pay_lightning_invoice",
@@ -192,8 +193,17 @@ test("capability remains in storage and the authorization header only", async ()
   const request = async (input: string | URL | Request, init?: RequestInit) => {
     const url = String(input)
     calls.push({ url, init: init ?? {} })
-    const body =
-      url.endsWith("/sessions") && init?.method === "POST"
+    const body = url.endsWith("/inputs")
+      ? {
+          schema: "openagents.immortal.public-regtest-demo-input.v1",
+          sandbox_session_id: SESSION,
+          swap_type: "reverse",
+          amount_sat: 100_000,
+          destination:
+            "bcrt1pvcpgfdxvvnklep6kdyewn80pphta54nwwrex3ahrvh2uh0e9dgwsalmcu5",
+          expires_at: NOW + 300,
+        }
+      : url.endsWith("/sessions") && init?.method === "POST"
         ? {
             schema: "openagents.immortal.public-regtest-session-response.v1",
             capability: CAPABILITY,
@@ -213,6 +223,11 @@ test("capability remains in storage and the authorization header only", async ()
   )
   const created = await client.create(REQUESTER)
   await client.refresh(created.capability)
+  const input = await client.allocateDemoInput(
+    created.capability,
+    "reverse",
+    100_000
+  )
 
   assert.equal(stored.value?.capability, CAPABILITY)
   assert.equal(calls[0]?.url.includes(CAPABILITY), false)
@@ -223,4 +238,12 @@ test("capability remains in storage and the authorization header only", async ()
     `ImmortalRegtest ${CAPABILITY}`
   )
   assert.equal(calls[1]?.url.includes(CAPABILITY), false)
+  assert.equal(input.destination.startsWith("bcrt1"), true)
+  const inputHeaders = new Headers(calls[2]?.init.headers)
+  assert.equal(
+    inputHeaders.get("Authorization"),
+    `ImmortalRegtest ${CAPABILITY}`
+  )
+  assert.equal(calls[2]?.url.includes(CAPABILITY), false)
+  assert.equal(String(calls[2]?.init.body).includes(CAPABILITY), false)
 })
