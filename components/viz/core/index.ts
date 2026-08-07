@@ -11,7 +11,12 @@ export {
   type VizEdgeGeometry,
   type VizShape,
 } from "./geometry"
-export { useVizScene, VizScene, type VizSceneProps } from "./scene"
+export {
+  useReducedMotionPreference,
+  useVizScene,
+  VizScene,
+  type VizSceneProps,
+} from "./scene"
 export {
   useVizArrowMarkerUrl,
   VIZ_MARKER_TONES,

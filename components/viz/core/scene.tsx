@@ -54,7 +54,8 @@ function subscribeReducedMotion(onChange: () => void): () => void {
   return () => query.removeEventListener("change", onChange)
 }
 
-function useReducedMotion(): boolean {
+/** Standalone reduced-motion preference; usable outside a <VizScene>. */
+export function useReducedMotionPreference(): boolean {
   return React.useSyncExternalStore(
     subscribeReducedMotion,
     () => window.matchMedia(REDUCED_MOTION_QUERY).matches,
@@ -90,7 +91,7 @@ export function VizScene({
     () => `viz-${reactId.replace(/[^a-zA-Z0-9]/g, "")}`,
     [reactId]
   )
-  const reducedMotion = useReducedMotion()
+  const reducedMotion = useReducedMotionPreference()
   const context = React.useMemo(
     () => ({ sceneId, reducedMotion }),
     [sceneId, reducedMotion]

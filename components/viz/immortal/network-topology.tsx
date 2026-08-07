@@ -30,6 +30,13 @@ export interface ImmortalNetworkTopologySceneProps {
   states?: NetworkTopologyStates
   /** Socket annotation for healthy relays (e.g. "live", "snapshot"). */
   socketState?: string
+  /**
+   * When set, only these nodes (and edges between them) stay lit — used by
+   * replays to spotlight the route a record is traveling. Hover overrides.
+   */
+  focus?: readonly TopologyNodeId[] | null
+  /** Extra scene content drawn above nodes (e.g. traveling record chips). */
+  children?: React.ReactNode
   className?: string
 }
 
@@ -38,7 +45,7 @@ export interface ImmortalNetworkTopologySceneProps {
 const W = 880
 const H = 520
 
-const N = {
+export const TOPOLOGY_ANCHORS = {
   requester: { x: 130, y: 150, shape: "circle", r: 26 } satisfies VizAnchor,
   walletCln: {
     x: 130,
@@ -73,7 +80,10 @@ const N = {
   lnB: { x: 400, y: 482, shape: "circle", r: 13 } satisfies VizAnchor,
 } as const
 
-type NodeId = keyof typeof N
+const N = TOPOLOGY_ANCHORS
+
+export type TopologyNodeId = keyof typeof TOPOLOGY_ANCHORS
+type NodeId = TopologyNodeId
 
 // Adjacency for hover dimming: hovering a node keeps itself + neighbors lit.
 const ADJACENCY: Record<NodeId, readonly NodeId[]> = {
@@ -230,6 +240,8 @@ const NODE_ORDER: readonly NodeId[] = [
 export function ImmortalNetworkTopologyScene({
   states = {},
   socketState = "live",
+  focus = null,
+  children,
   className,
 }: ImmortalNetworkTopologySceneProps) {
   const [hovered, setHovered] = React.useState<NodeId | null>(null)
@@ -240,13 +252,19 @@ export function ImmortalNetworkTopologyScene({
   }
 
   const nodeDimmed = (id: NodeId): boolean => {
-    if (hovered === null) return false
-    return id !== hovered && !ADJACENCY[hovered].includes(id)
+    if (hovered !== null) {
+      return id !== hovered && !ADJACENCY[hovered].includes(id)
+    }
+    if (focus) return !focus.includes(id)
+    return false
   }
 
   const edgeDimmed = (edge: EdgeSpec): boolean => {
-    if (hovered === null) return false
-    return edge.from !== hovered && edge.to !== hovered
+    if (hovered !== null) {
+      return edge.from !== hovered && edge.to !== hovered
+    }
+    if (focus) return !focus.includes(edge.from) || !focus.includes(edge.to)
+    return false
   }
 
   return (
@@ -324,6 +342,7 @@ export function ImmortalNetworkTopologyScene({
             </g>
           )
         })}
+        {children}
       </VizScene>
       {/* Screen-reader mirror of the drawn scene. */}
       <table className="sr-only">
