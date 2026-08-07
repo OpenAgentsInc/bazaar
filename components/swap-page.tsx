@@ -1,16 +1,12 @@
 "use client"
 
+import Image from "next/image"
 import { useEffect, useMemo, useState } from "react"
 import {
-  ArrowDownIcon,
-  BitcoinIcon,
   CheckIcon,
   ChevronRightIcon,
   CopyIcon,
-  DropletsIcon,
-  Settings2Icon,
   ShieldCheckIcon,
-  ZapIcon,
 } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
@@ -69,33 +65,63 @@ import {
 const assetUi = {
   LN: {
     label: "Lightning",
-    destination: "Lightning invoice or Lightning address",
-    Icon: ZapIcon,
-    iconClassName: "bg-primary text-primary-foreground",
+    symbol: "LN",
+    destination: "Paste a Lightning invoice, BOLT12 or LNURL to receive funds",
+    iconSrc: "/boltz/lightning-icon.svg",
   },
   BTC: {
     label: "Bitcoin",
-    destination: "Bitcoin address",
-    Icon: BitcoinIcon,
-    iconClassName: "bg-[oklch(0.7523_0.1663_62.59)] text-white",
+    symbol: "BTC",
+    destination: "Enter BTC address to receive funds",
+    iconSrc: "/boltz/bitcoin-icon.svg",
   },
   LBTC: {
     label: "Liquid BTC",
-    destination: "Liquid address",
-    Icon: DropletsIcon,
-    iconClassName: "bg-[oklch(0.638_0.122_222)] text-white",
+    symbol: "LBTC",
+    destination: "Enter LBTC address to receive funds",
+    iconSrc: "/boltz/liquid-icon.svg",
   },
 } as const
 
 function AssetIcon({ ticker }: { ticker: MarketAssetTicker }) {
-  const { Icon, iconClassName } = assetUi[ticker]
+  const { iconSrc } = assetUi[ticker]
 
   return (
-    <span
-      className={`flex size-8 shrink-0 items-center justify-center rounded-full ${iconClassName}`}
-    >
-      <Icon className="size-4.5" strokeWidth={2.5} aria-hidden="true" />
+    <span className="flex size-[2.125rem] shrink-0 items-center justify-center">
+      <Image
+        src={iconSrc}
+        alt=""
+        width={34}
+        height={34}
+        className="size-[2.125rem]"
+      />
     </span>
+  )
+}
+
+function BoltzCogIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      viewBox="0 0 16 16"
+      fill="currentColor"
+      className={className}
+      aria-hidden="true"
+    >
+      <path d="M14.59 9.535a3.053 3.053 0 0 1 1.127-4.164l-1.572-2.723a3.017 3.017 0 0 1-1.529.414A3.052 3.052 0 0 1 9.574 0H6.429a3.009 3.009 0 0 1-.406 1.535c-.839 1.454-2.706 1.948-4.17 1.106L.281 5.364a3 3 0 0 1 1.123 1.117 3.053 3.053 0 0 1-1.12 4.16l1.572 2.723c.448-.261.967-.41 1.522-.41A3.052 3.052 0 0 1 6.42 16h3.145a3.012 3.012 0 0 1 .406-1.519 3.053 3.053 0 0 1 4.163-1.11l1.572-2.723a3.008 3.008 0 0 1-1.116-1.113zM8 11.24a3.24 3.24 0 1 1 0-6.48 3.24 3.24 0 0 1 0 6.48z" />
+    </svg>
+  )
+}
+
+function BoltzArrowDownIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      viewBox="0 0 16 16"
+      fill="currentColor"
+      className={className}
+      aria-hidden="true"
+    >
+      <path d="M8 15.5 15.5 8H11V0H5v8H.5z" />
+    </svg>
   )
 }
 
@@ -123,20 +149,20 @@ function AssetPicker({
     >
       <SelectTrigger
         aria-label={label}
-        className="absolute bottom-3 left-2 z-10 h-11 w-auto max-w-[10rem] rounded-full border-foreground/15 bg-card px-1.5 pr-3 text-foreground shadow-none hover:bg-accent focus-visible:border-primary focus-visible:ring-primary/25 disabled:opacity-60"
+        className="absolute bottom-2.5 left-2.5 z-10 grid h-[2.625rem] w-auto max-w-[11rem] min-w-[6.75rem] grid-cols-[2.125rem_auto_1rem] items-center justify-normal gap-x-1.5 rounded-full border-border bg-card px-0 py-0 ps-1 pe-3 text-foreground shadow-none hover:bg-accent focus-visible:border-ring focus-visible:ring-ring/25 disabled:opacity-60"
       >
         <AssetIcon ticker={ticker} />
-        <SelectValue className="font-semibold uppercase">
-          {assetUi[ticker].label}
+        <SelectValue className="text-left text-sm leading-none font-semibold uppercase">
+          {assetUi[ticker].symbol}
         </SelectValue>
       </SelectTrigger>
       <SelectContent
         align="start"
         alignItemWithTrigger={false}
-        className="min-w-52 rounded-xl bg-popover text-popover-foreground ring-foreground/15"
+        className="min-w-56 rounded-xl bg-popover text-popover-foreground ring-border"
       >
         {options.map((asset) => (
-          <SelectItem key={asset.id} value={asset.ticker}>
+          <SelectItem key={asset.id} value={asset.ticker} className="min-h-10">
             <AssetIcon ticker={asset.ticker} />
             <span>{asset.label}</span>
           </SelectItem>
@@ -169,10 +195,10 @@ function AmountField({
 }) {
   return (
     <div
-      className={`relative overflow-visible rounded-xl bg-input ring-1 transition-shadow ${
+      className={`relative h-[5.625rem] overflow-visible rounded-xl border bg-secondary transition-shadow ${
         invalid
-          ? "ring-destructive/70"
-          : "ring-foreground/15 focus-within:ring-primary/60"
+          ? "border-destructive ring-1 ring-destructive/40"
+          : "border-border focus-within:border-ring focus-within:ring-1 focus-within:ring-ring/40"
       }`}
     >
       <label
@@ -199,9 +225,9 @@ function AmountField({
         onChange={(event) =>
           onAmountChange?.(normalizeAtomicInput(event.target.value))
         }
-        className="h-24 rounded-xl border-0 bg-transparent pt-7 pr-3.5 pb-6 pl-44 text-right text-[2rem] leading-none font-normal tracking-tight text-foreground shadow-none placeholder:text-muted-foreground focus-visible:border-transparent focus-visible:ring-0 md:text-[2rem]"
+        className="h-full rounded-xl border-0 bg-transparent pt-8 pr-3 pb-4 pl-36 text-right text-[2.0625rem] leading-[1.2] font-normal tracking-tight text-foreground shadow-none placeholder:text-muted-foreground focus-visible:border-transparent focus-visible:ring-0 md:text-[2.0625rem]"
       />
-      <span className="pointer-events-none absolute right-3.5 bottom-1.5 max-w-[15rem] truncate text-[0.6875rem] text-muted-foreground">
+      <span className="pointer-events-none absolute right-3 bottom-1 max-w-[15rem] truncate text-[0.6875rem] text-muted-foreground">
         {hint}
       </span>
     </div>
@@ -364,16 +390,16 @@ export function SwapPage({
   }
 
   return (
-    <main className="dark flex h-svh items-center justify-center overflow-hidden bg-background px-0 py-0 text-foreground sm:px-6 sm:py-6">
-      <Card className="relative max-h-svh w-full max-w-[31rem] gap-0 overflow-hidden rounded-none bg-card py-0 shadow-none ring-foreground/15 sm:max-h-[calc(100svh-3rem)] sm:rounded-2xl">
-        <CardHeader className="relative px-4 pt-5 pb-1 sm:px-5 sm:pt-5">
-          <span className="absolute top-5 left-4 rounded border border-foreground/15 px-1.5 py-0.5 font-mono text-[0.625rem] tracking-[0.12em] text-muted-foreground sm:left-5">
+    <main className="dark flex h-svh items-center justify-center overflow-hidden overscroll-none bg-background px-0 text-foreground sm:px-6 sm:py-6">
+      <Card className="relative max-h-svh w-full max-w-[31rem] gap-0 overflow-hidden rounded-none border-border bg-card py-0 shadow-none sm:max-h-[calc(100svh-3rem)] sm:rounded-2xl">
+        <CardHeader className="grid grid-cols-[1fr_auto_1fr] items-center gap-0 px-4 py-4 sm:px-[1.375rem]">
+          <span className="col-start-1 h-5 w-fit self-center justify-self-start rounded-[0.1875rem] border border-border px-1.5 font-mono text-[0.625rem] leading-[1.125rem] font-medium tracking-[0.08em] text-muted-foreground">
             {mode === "no_spend" ? "DEMO · NO-SPEND" : "REGTEST · FUNDED"}
           </span>
           <CardTitle
             role="heading"
             aria-level={1}
-            className="text-center text-xl font-bold tracking-tight"
+            className="col-start-2 text-center text-[1.375rem] leading-[1.2] font-extrabold tracking-tight"
           >
             Create Swap
           </CardTitle>
@@ -391,7 +417,7 @@ export function SwapPage({
           />
         </CardHeader>
 
-        <CardContent className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 pt-2 pb-5 sm:px-5 sm:pb-5">
+        <CardContent className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 pb-[1.375rem] sm:px-[1.375rem]">
           {mode === "funded_regtest" ? (
             <FundedSwapContent
               runtime={funded.runtime}
@@ -424,9 +450,9 @@ export function SwapPage({
                     aria-label="Reverse swap direction"
                     disabled={!reverseAvailable}
                     onClick={reverseSwap}
-                    className="absolute top-1/2 left-1/2 z-20 size-8 -translate-x-1/2 -translate-y-1/2 rounded-md border-foreground/15 bg-card text-muted-foreground shadow-[0_2px_6px_oklch(0_0_0/0.35)] hover:border-foreground/25 hover:bg-accent hover:text-foreground disabled:bg-card disabled:opacity-50"
+                    className="absolute top-1/2 left-1/2 z-20 size-8 -translate-x-1/2 -translate-y-1/2 rounded-md border-border bg-card text-muted-foreground shadow-[0_2px_6px_oklch(0_0_0/0.35)] hover:border-ring hover:bg-accent hover:text-foreground active:not-aria-[haspopup]:-translate-y-1/2 disabled:bg-card disabled:opacity-50 dark:bg-card dark:hover:bg-accent"
                   >
-                    <ArrowDownIcon className="size-3.5" aria-hidden="true" />
+                    <BoltzArrowDownIcon className="size-3.5 opacity-65" />
                   </Button>
 
                   <AmountField
@@ -471,8 +497,8 @@ export function SwapPage({
                 value={destination}
                 disabled={sessionActive}
                 onChange={(event) => setDestination(event.target.value)}
-                placeholder={`Enter ${destinationLabel.toLowerCase()} to receive funds`}
-                className="h-12 rounded-xl border-foreground/15 bg-input text-center text-sm placeholder:text-muted-foreground focus-visible:border-primary focus-visible:ring-primary/25"
+                placeholder={destinationLabel}
+                className="h-[2.625rem] rounded-xl border-border bg-secondary text-center text-sm placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-ring/25"
               />
 
               <Separator className="my-4 bg-foreground/10" />
@@ -485,7 +511,7 @@ export function SwapPage({
                   (lifecycle.state === "idle" && !canCreate)
                 }
                 data-demo-primary-action
-                className="h-11 w-full rounded-xl bg-primary font-bold text-primary-foreground hover:bg-primary/85 disabled:bg-[oklch(0.471_0.0177_251.32)] disabled:text-background disabled:opacity-100"
+                className="h-[2.625rem] w-full rounded-xl bg-primary font-bold text-primary-foreground hover:bg-primary/85 disabled:bg-secondary disabled:text-muted-foreground disabled:opacity-100"
               >
                 {primaryActionLabel(lifecycle)}
               </Button>
@@ -529,8 +555,8 @@ function FundedSwapContent({
           }
         />
 
-        <span className="absolute top-1/2 left-1/2 z-20 flex size-8 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-md border border-foreground/15 bg-card text-muted-foreground shadow-[0_2px_6px_oklch(0_0_0/0.35)]">
-          <ArrowDownIcon className="size-3.5" aria-hidden="true" />
+        <span className="absolute top-1/2 left-1/2 z-20 flex size-8 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-md border border-border bg-card text-muted-foreground shadow-[0_2px_6px_oklch(0_0_0/0.35)]">
+          <BoltzArrowDownIcon className="size-3.5 opacity-65" />
         </span>
 
         <FundedAmountField
@@ -581,7 +607,7 @@ function FundedSwapContent({
         disabled={!ready}
         onClick={onAuthorize}
         data-funded-primary-action
-        className="h-11 w-full rounded-xl bg-primary font-bold text-primary-foreground hover:bg-primary/85 disabled:bg-[oklch(0.471_0.0177_251.32)] disabled:text-background disabled:opacity-100"
+        className="h-[2.625rem] w-full rounded-xl bg-primary font-bold text-primary-foreground hover:bg-primary/85 disabled:bg-secondary disabled:text-muted-foreground disabled:opacity-100"
       >
         {fundedActionLabel(runtime, journey)}
       </Button>
@@ -604,11 +630,11 @@ function FundedAmountField({
   hint: string
 }) {
   return (
-    <div className="relative h-24 rounded-xl bg-input ring-1 ring-foreground/15">
+    <div className="relative h-[5.625rem] rounded-xl border border-border bg-secondary">
       <span className="absolute top-2.5 left-3.5 text-[0.6875rem] font-bold text-muted-foreground uppercase">
         {side}
       </span>
-      <span className="absolute bottom-3 left-2 flex h-11 items-center gap-2 rounded-full border border-foreground/15 bg-card px-1.5 pr-3 font-semibold text-foreground uppercase">
+      <span className="absolute bottom-2.5 left-2.5 flex h-[2.625rem] items-center gap-1.5 rounded-full border border-border bg-card ps-1 pe-3 font-semibold text-foreground uppercase">
         <AssetIcon ticker={ticker} />
         {ticker}
       </span>
@@ -634,7 +660,7 @@ function VerificationTile({
   verified: boolean
 }) {
   return (
-    <div className="rounded-xl border border-foreground/15 bg-input/45 p-3">
+    <div className="rounded-xl border border-border bg-secondary p-3">
       <div className="flex items-center gap-1.5 font-semibold text-foreground">
         <span
           className={`size-2 rounded-full ${verified ? "bg-primary" : "bg-muted-foreground"}`}
@@ -652,7 +678,7 @@ function VerificationTile({
 
 function FundedEvidencePanel({ session }: { session: FundedSessionManifest }) {
   return (
-    <Collapsible className="mt-3 rounded-xl border border-foreground/15 bg-input/45">
+    <Collapsible className="mt-3 rounded-xl border border-border bg-secondary">
       <CollapsibleTrigger className="group flex w-full items-center justify-between px-3 py-2.5 text-left text-xs font-semibold text-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring">
         Public-safe evidence
         <ChevronRightIcon className="size-3.5 transition-transform duration-200 group-data-panel-open:rotate-90 motion-reduce:transition-none" />
@@ -801,7 +827,7 @@ function LifecyclePanel({
       data-lifecycle-state={lifecycle.state}
       data-lifecycle-stage={activeStage ?? "complete"}
       data-provider-role={lifecycle.providerRole ?? undefined}
-      className="mt-4 rounded-xl border border-foreground/15 bg-input/45 p-3"
+      className="mt-4 rounded-xl border border-border bg-secondary p-3"
     >
       <div className="mb-2 flex items-center justify-between gap-3 text-[0.6875rem] font-medium text-muted-foreground">
         <span className="font-mono tracking-wide uppercase">
@@ -888,7 +914,13 @@ function QuoteSummary({
     <Collapsible className="mt-4">
       <div className="flex items-start justify-between gap-4 text-xs text-muted-foreground">
         <div className="flex items-center gap-1.5 pt-0.5 font-mono">
-          <span className="text-base text-foreground">₿</span>
+          <Image
+            src="/boltz/sat.svg"
+            alt=""
+            width={15}
+            height={11}
+            className="h-[0.6875rem] w-[0.9375rem] scale-[1.65]"
+          />
           <span className="text-primary">sats</span>
         </div>
         <CollapsibleTrigger className="group flex items-start gap-1 text-right outline-none hover:text-foreground focus-visible:rounded-sm focus-visible:ring-2 focus-visible:ring-ring">
@@ -1006,13 +1038,13 @@ function RuntimePopover({
     <Popover>
       <PopoverTrigger
         aria-label="Swap settings"
-        className="absolute top-4 right-4 inline-flex size-8 items-center justify-center rounded-lg text-muted-foreground transition-colors outline-none hover:bg-accent hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/30"
+        className="col-start-3 inline-flex size-9 items-center justify-center justify-self-end rounded-lg text-muted-foreground transition-colors outline-none hover:bg-accent hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/30"
       >
-        <Settings2Icon className="size-5" aria-hidden="true" />
+        <BoltzCogIcon className="size-[1.3125rem]" />
       </PopoverTrigger>
       <PopoverContent
         align="end"
-        className="w-64 rounded-xl bg-popover text-popover-foreground ring-foreground/15"
+        className="w-64 rounded-xl bg-popover text-popover-foreground ring-border"
       >
         <PopoverHeader>
           <PopoverTitle>Swap settings</PopoverTitle>
@@ -1035,7 +1067,7 @@ function RuntimePopover({
             }
           }}
         >
-          <SelectTrigger id="swap-mode" className="mb-2 w-full bg-input">
+          <SelectTrigger id="swap-mode" className="mb-2 w-full bg-secondary">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -1058,7 +1090,7 @@ function RuntimePopover({
             Funded mode: {fundedConfig.detail}
           </p>
         ) : null}
-        <div className="flex items-center gap-2 rounded-lg bg-input p-3 text-xs text-muted-foreground">
+        <div className="flex items-center gap-2 rounded-lg bg-secondary p-3 text-xs text-muted-foreground">
           <ShieldCheckIcon className="size-4 shrink-0 text-primary" />
           {mode === "no_spend"
             ? "Verify route and recovery paths before funding"
@@ -1099,7 +1131,7 @@ function FundedRuntimeDisclosure({ runtime }: { runtime: FundedRuntimeState }) {
       data-funded-runtime-state={runtime.state}
       role="status"
       aria-live="polite"
-      className="mb-2 rounded-lg border border-foreground/10 bg-input p-3 text-xs"
+      className="mb-2 rounded-lg border border-border bg-secondary p-3 text-xs"
     >
       <div className="flex items-center gap-2 font-semibold text-foreground">
         <span
@@ -1138,7 +1170,7 @@ function RuntimeDisclosure({ status }: { status: ImmortalRuntimeStatus }) {
       data-immortal-state={status.state}
       role="status"
       aria-live="polite"
-      className="mb-2 rounded-lg border border-foreground/10 bg-input p-3 text-xs"
+      className="mb-2 rounded-lg border border-border bg-secondary p-3 text-xs"
     >
       <div className="flex items-center gap-2 font-semibold text-foreground">
         <span

@@ -113,8 +113,10 @@ the browser before instantiation. The committed artifact is built with Rust
 toolchain, and registry paths so local workstation paths do not enter the
 public binary.
 
-The framework-neutral TypeScript boundary is vendored from OpenAgents commit
-`9843df74c3577a8ba1a326692ec69011bf1d0931`. The generated NIP-MKT SDK is
+The framework-neutral TypeScript boundary is based on OpenAgents commit
+`9843df74c3577a8ba1a326692ec69011bf1d0931` and compatibility-updated for the
+newer qualified Immortal artifact; exact hashes and the revision distinction
+are recorded in `vendor/mkt-swp/PROVENANCE.md`. The generated NIP-MKT SDK is
 vendored from OpenAgents commit `7a8a5ac8860bf755e2ca80a40a2386ef51d817ca`
 and compiled into a browser ESM bundle with `pnpm build:nip-mkt`.
 
