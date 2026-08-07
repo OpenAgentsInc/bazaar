@@ -477,7 +477,11 @@ export function SwapPage({
         canCreate &&
         destinationState.ok
       ) {
-        void publicRuntime.start(selectedQuote, destinationState.destination)
+        void publicRuntime.start(
+          selectedQuote,
+          quotes.state === "ready" ? quotes.quotes : [selectedQuote],
+          destinationState.destination
+        )
       }
       return
     }

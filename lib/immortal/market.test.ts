@@ -8,6 +8,7 @@ import {
   eligibleRoutes,
   foldMarketHeads,
   quoteRequestKey,
+  reviewedQuoteFeeCeiling,
   selectBestQuote,
   validateQuoteView,
   type QuoteRequestContext,
@@ -184,6 +185,19 @@ test("best Quote selection is deterministic and uses atomic-unit BigInt", () => 
   assert.equal(
     selectBestQuote([base, huge], 1_700_000_000)?.outputAmount,
     huge.outputAmount
+  )
+})
+
+test("public execution preserves the highest fee among reviewed comparable Quotes", () => {
+  const selected = validated(providerA, "890", "110")
+  const alternate = validated(providerB, "880", "120")
+  const unrelated = {
+    ...validated(providerB, "870", "130"),
+    requestKey: "another request",
+  }
+  assert.equal(
+    reviewedQuoteFeeCeiling(selected, [selected, alternate, unrelated]),
+    "120"
   )
 })
 

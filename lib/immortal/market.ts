@@ -410,6 +410,21 @@ export function selectBestQuote(
   )
 }
 
+export function reviewedQuoteFeeCeiling(
+  selected: ValidatedQuote,
+  quotes: readonly ValidatedQuote[]
+): string {
+  return quotes
+    .filter((quote) => quote.requestKey === selected.requestKey)
+    .reduce(
+      (maximum, quote) =>
+        BigInt(quote.maximumTotalFee) > BigInt(maximum)
+          ? quote.maximumTotalFee
+          : maximum,
+      selected.maximumTotalFee
+    )
+}
+
 export function findDirection(
   market: ImmortalMarketSnapshot,
   inputAssetId: string,

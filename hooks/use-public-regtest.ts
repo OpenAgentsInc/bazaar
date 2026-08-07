@@ -6,7 +6,10 @@ import {
   buildDynamicPublicRegtestRequestJson,
   type ValidatedRegtestDestination,
 } from "@/lib/immortal/destination"
-import type { ValidatedQuote } from "@/lib/immortal/market"
+import {
+  reviewedQuoteFeeCeiling,
+  type ValidatedQuote,
+} from "@/lib/immortal/market"
 import type { PublicRegtestConfigResult } from "@/lib/immortal/public-config"
 import {
   BrowserPublicSessionStorage,
@@ -244,7 +247,11 @@ export function usePublicRegtest(
   }, [enabled, refresh, requesterIdentity, result, setRuntime])
 
   const start = useCallback(
-    async (quote: ValidatedQuote, destination: ValidatedRegtestDestination) => {
+    async (
+      quote: ValidatedQuote,
+      reviewedQuotes: readonly ValidatedQuote[],
+      destination: ValidatedRegtestDestination
+    ) => {
       const client = clientRef.current
       const capability = capabilityRef.current
       const current = runtimeRef.current
@@ -258,7 +265,7 @@ export function usePublicRegtest(
         const request = buildDynamicPublicRegtestRequestJson({
           requestId: randomHex32(),
           inputAmountSat: quote.inputAmount,
-          maximumTotalFeeSat: quote.maximumTotalFee,
+          maximumTotalFeeSat: reviewedQuoteFeeCeiling(quote, reviewedQuotes),
           createdAt: now,
           expiresAt,
           destination,

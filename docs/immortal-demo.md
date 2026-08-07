@@ -48,6 +48,8 @@ and fee arithmetic, and reservation disclosure checks. Bazaar selects the
 highest output, then the lowest maximum total fee, then the lexicographically
 lowest provider key. The disclosure shows both signed rows and their expiry;
 an expired selection is removed and refreshed rather than silently repriced.
+Public-regtest execution preserves the highest maximum-total-fee value among
+those two comparable reviewed Quotes as the worker's comparison ceiling.
 
 ## Custody and persistence policy
 

@@ -61,6 +61,10 @@ strings and are compared with `BigInt`; no JavaScript floating-point arithmetic
 is used. The Immortal dynamic public-regtest request has the additional closed
 10,000–1,000,000 sat and 1–50,000 sat fee bounds. Its JSON serializer inserts
 already-validated canonical decimal tokens directly into the wire document.
+The funded worker compares both providers, so its ceiling is the highest
+maximum-total-fee value among the two comparable signed Quotes shown to the
+user. It never substitutes the cheaper selected Quote's fee for the reviewed
+two-provider ceiling.
 
 For a submarine swap, the amount-bearing invoice must equal the selected signed
 Quote output. A mismatch makes that Quote non-actionable and funding remains
