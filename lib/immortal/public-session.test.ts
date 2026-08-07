@@ -201,7 +201,7 @@ test("capability remains in storage and the authorization header only", async ()
           amount_sat: 100_000,
           destination:
             "bcrt1pvcpgfdxvvnklep6kdyewn80pphta54nwwrex3ahrvh2uh0e9dgwsalmcu5",
-          expires_at: NOW + 300,
+          expires_at: NOW + 630,
         }
       : url.endsWith("/sessions") && init?.method === "POST"
         ? {

@@ -552,7 +552,9 @@ function parseDemoInput(
     !destination.startsWith(prefix) ||
     destination.length > 8_192 ||
     expiresAt <= now ||
-    expiresAt > now + 600
+    // The service issues a ten-minute input. Match the launch/signature
+    // contract's bounded 60-second clock-skew allowance at the browser edge.
+    expiresAt > now + 660
   ) {
     fail("The demo input is outside the public regtest contract.")
   }

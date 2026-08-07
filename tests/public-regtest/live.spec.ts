@@ -83,7 +83,7 @@ test("public regtest completes reverse and submarine swaps", async ({
 })
 
 async function completeJourney(page: Page, direction: "reverse" | "submarine") {
-  await page.getByLabel("Send").fill("100000")
+  await page.getByRole("textbox", { name: "Send", exact: true }).fill("100000")
   await page
     .getByRole("button", {
       name:
