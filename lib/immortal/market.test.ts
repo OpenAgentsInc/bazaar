@@ -36,6 +36,7 @@ const destination: ValidatedRegtestDestination = {
 }
 
 const config = {
+  relay: { websocketUrl: "wss://relay-default.example.com" },
   providers: [
     {
       role: "provider-a",
@@ -64,6 +65,10 @@ test("live replaceable heads expose only jointly offered engine rails", () => {
       direction.outputAsset.ticker === "BTC"
   )
   assert.equal(reverse?.providerCount, 2)
+  assert.deepEqual(
+    reverse?.routes.map((route) => route.relayUrl),
+    ["wss://relay-default.example.com", "wss://relay-default.example.com"]
+  )
   assert.equal(reverse?.minimum, "1000")
   assert.equal(reverse?.maximum, "1000")
   assert.equal(reverse?.actionable, true)

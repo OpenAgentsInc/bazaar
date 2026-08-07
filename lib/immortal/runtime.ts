@@ -99,12 +99,17 @@ export class ImmortalBrowserRuntime {
   private store: ImmortalSessionStore | null = null
   private identity: DemoIdentity | null = null
   private transport: ImmortalRelayTransport | null = null
+  private readonly transports = new Map<string, ImmortalRelayTransport>()
   private config: ImmortalDemoConfig | null = null
   private stopped = false
-  private reconnectTimer: ReturnType<typeof setTimeout> | null = null
-  private reconnectAttempt = 0
+  private readonly reconnectTimers = new Map<
+    string,
+    ReturnType<typeof setTimeout>
+  >()
+  private readonly reconnectAttempts = new Map<string, number>()
   private restoredSessionCount = 0
   private relayInformation: RelayInformation | null = null
+  private readonly relayInformationByUrl = new Map<string, RelayInformation>()
   private relayReady = false
   private readonly publicHeads = new Map<string, Event>()
   private market: ImmortalMarketSnapshot = EMPTY_MARKET
@@ -184,20 +189,22 @@ export class ImmortalBrowserRuntime {
 
   stop(): void {
     this.stopped = true
-    if (this.reconnectTimer) clearTimeout(this.reconnectTimer)
+    for (const timer of this.reconnectTimers.values()) clearTimeout(timer)
     if (this.quoteTimeout) clearTimeout(this.quoteTimeout)
     if (this.quoteExpiryTimer) clearTimeout(this.quoteExpiryTimer)
     if (this.lifecycleTimer) clearTimeout(this.lifecycleTimer)
     if (this.lifecycleTimeout) clearTimeout(this.lifecycleTimeout)
     if (this.lifecycleSnapshotRefresh)
       clearTimeout(this.lifecycleSnapshotRefresh)
-    this.reconnectTimer = null
+    this.reconnectTimers.clear()
+    this.reconnectAttempts.clear()
     this.quoteTimeout = null
     this.quoteExpiryTimer = null
     this.lifecycleTimer = null
     this.lifecycleTimeout = null
     this.lifecycleSnapshotRefresh = null
-    this.transport?.close()
+    for (const transport of this.transports.values()) transport.close()
+    this.transports.clear()
     this.transport = null
     this.relayReady = false
   }
@@ -512,7 +519,8 @@ export class ImmortalBrowserRuntime {
     session: StoredImmortalSession,
     event: Event
   ): Promise<void> {
-    if (!this.identity || !this.transport) {
+    const transport = this.transportForRelay(session.relayUrl)
+    if (!this.identity || !transport) {
       throw new Error("relay_unavailable: the direct relay is disconnected")
     }
     const copies = await wrapRequesterRecord(
@@ -521,8 +529,8 @@ export class ImmortalBrowserRuntime {
       session.providerPubkey
     )
     await Promise.all([
-      this.transport.publish(copies.counterparty),
-      this.transport.publish(copies.senderRecovery),
+      transport.publish(copies.counterparty),
+      transport.publish(copies.senderRecovery),
     ])
   }
 
@@ -545,10 +553,9 @@ export class ImmortalBrowserRuntime {
       ) {
         return
       }
-      this.transport?.close()
-      this.transport = null
-      this.relayReady = false
-      void this.connect(1)
+      void this.refreshSessionRelay(sessionId).catch((cause: unknown) =>
+        this.emitLifecycleFailure(sessionId, cause)
+      )
     }, 2_000)
   }
 
@@ -646,7 +653,7 @@ export class ImmortalBrowserRuntime {
       !this.client ||
       !this.store ||
       !this.identity ||
-      !this.transport ||
+      !this.relayReady ||
       !this.config ||
       this.stopped
     ) {
@@ -740,7 +747,6 @@ export class ImmortalBrowserRuntime {
       !this.client ||
       !this.store ||
       !this.identity ||
-      !this.transport ||
       !this.config ||
       generation !== this.quoteGeneration
     ) {
@@ -795,12 +801,12 @@ export class ImmortalBrowserRuntime {
       sessionId,
       requesterPubkey: this.identity.pubkey,
       providerPubkey: route.providerPubkey,
-      relayUrl: this.config.relay.websocketUrl,
+      relayUrl: route.relayUrl,
       selectedProviderRoute: {
         role: route.providerRole,
         providerPubkey: route.providerPubkey,
         offeringCoordinate: route.offeringCoordinate,
-        relayUrl: this.config.relay.websocketUrl,
+        relayUrl: route.relayUrl,
       },
       dynamicInput: {
         inputAmount: input.inputAmount,
@@ -830,9 +836,13 @@ export class ImmortalBrowserRuntime {
       this.identity,
       route.providerPubkey
     )
+    const transport = this.transportForRelay(route.relayUrl)
+    if (!transport) {
+      throw new Error("relay_unavailable: the provider relay is disconnected")
+    }
     await Promise.all([
-      this.transport.publish(copies.counterparty),
-      this.transport.publish(copies.senderRecovery),
+      transport.publish(copies.counterparty),
+      transport.publish(copies.senderRecovery),
     ])
   }
 
@@ -999,28 +1009,48 @@ export class ImmortalBrowserRuntime {
               "Reconnecting the direct relay session and replaying its snapshot…",
           }
     )
-    const transport = new ImmortalRelayTransport(
-      this.config.relay.websocketUrl,
-      this.identity,
-      this.config.relay.contractIdentity
+    await Promise.all(
+      this.configuredRelays().map((relay) =>
+        this.connectRelay(relay, attempt)
+      )
     )
-    this.transport = transport
+  }
+
+  private async connectRelay(
+    relay: NonNullable<ImmortalDemoConfig["relayPool"]>[number],
+    attempt: number
+  ): Promise<void> {
+    if (this.stopped || !this.identity) return
+    const url = relay.websocketUrl
+    const prior = this.transports.get(url)
+    this.transports.delete(url)
+    prior?.close()
+    const transport = new ImmortalRelayTransport(
+      url,
+      this.identity,
+      relay.contractIdentity
+    )
     try {
-      this.relayInformation = await transport.connect({
+      const information = await transport.connect({
         onSnapshot: (snapshot) => this.consumeSnapshot(snapshot),
         onPublicEvent: (event) => this.consumePublicEvent(event),
         onPrivateEvent: (event) => this.consumePrivateEvent(event),
-        onDisconnect: () => this.scheduleReconnect(),
+        onDisconnect: () => this.handleDisconnect(url, transport),
       })
-      if (this.stopped || this.transport !== transport) return
-      this.relayReady = true
-      this.reconnectAttempt = 0
-      this.publishProvenance()
-      this.emitLive()
-      if (this.lockedSessionId) {
-        this.scheduleLifecycleAdvance(this.lockedSessionId, 0)
+      if (this.stopped) {
+        transport.close()
+        return
       }
+      this.transports.set(url, transport)
+      this.relayInformationByUrl.set(url, information)
+      if (url === this.config?.relay.websocketUrl) {
+        this.transport = transport
+        this.relayInformation = information
+      }
+      this.reconnectAttempts.delete(url)
+      this.updateRelayReadiness()
     } catch (cause) {
+      transport.close()
       if (this.stopped) return
       if (
         cause instanceof ImmortalRelayError &&
@@ -1033,26 +1063,87 @@ export class ImmortalBrowserRuntime {
         })
         return
       }
-      this.scheduleReconnect()
+      this.scheduleReconnect(url, attempt + 1)
     }
   }
 
-  private scheduleReconnect(): void {
-    if (this.stopped || this.reconnectTimer) return
+  private handleDisconnect(
+    url: string,
+    disconnected: ImmortalRelayTransport
+  ): void {
+    if (this.transports.get(url) !== disconnected) return
+    this.transports.delete(url)
+    this.relayInformationByUrl.delete(url)
+    if (this.transport === disconnected) {
+      this.transport = null
+      this.relayInformation = null
+    }
+    this.scheduleReconnect(url)
+  }
+
+  private scheduleReconnect(url: string, initialAttempt?: number): void {
+    if (this.stopped || this.reconnectTimers.has(url)) return
     this.relayReady = false
-    this.reconnectAttempt += 1
-    const attempt = this.reconnectAttempt
+    const attempt =
+      initialAttempt ?? (this.reconnectAttempts.get(url) ?? 0) + 1
+    this.reconnectAttempts.set(url, attempt)
     this.emit({
       state: "reconnecting",
       attempt,
       detail:
-        "The relay disconnected; restoring the authenticated snapshot before live updates.",
+        "A relay disconnected; restoring every authenticated provider lane before live updates.",
     })
     const delay = Math.min(8_000, 500 * 2 ** Math.min(attempt - 1, 4))
-    this.reconnectTimer = setTimeout(() => {
-      this.reconnectTimer = null
-      void this.connect(attempt)
+    const timer = setTimeout(() => {
+      this.reconnectTimers.delete(url)
+      const relay = this.configuredRelays().find(
+        (candidate) => candidate.websocketUrl === url
+      )
+      if (relay) void this.connectRelay(relay, attempt)
     }, delay)
+    this.reconnectTimers.set(url, timer)
+  }
+
+  private updateRelayReadiness(): void {
+    const targets = this.configuredRelays()
+    this.relayReady =
+      targets.length > 0 &&
+      targets.every((relay) => this.transports.has(relay.websocketUrl))
+    if (!this.relayReady) return
+    this.publishProvenance()
+    this.emitLive()
+    if (this.lockedSessionId) {
+      this.scheduleLifecycleAdvance(this.lockedSessionId, 0)
+    }
+  }
+
+  private configuredRelays(): NonNullable<ImmortalDemoConfig["relayPool"]> {
+    if (!this.config) return []
+    return this.config.relayPool?.length
+      ? this.config.relayPool
+      : [this.config.relay]
+  }
+
+  private transportForRelay(url: string): ImmortalRelayTransport | null {
+    return this.transports.get(url) ?? null
+  }
+
+  private async refreshSessionRelay(sessionId: string): Promise<void> {
+    if (!this.store) return
+    const session = await this.store.get(sessionId)
+    const relay = this.configuredRelays().find(
+      (candidate) => candidate.websocketUrl === session.relayUrl
+    )
+    if (!relay) return
+    const transport = this.transports.get(session.relayUrl)
+    this.transports.delete(session.relayUrl)
+    transport?.close()
+    if (this.transport === transport) {
+      this.transport = null
+      this.relayInformation = null
+    }
+    this.relayReady = false
+    await this.connectRelay(relay, 1)
   }
 
   private async consumeSnapshot(snapshot: RelaySnapshot): Promise<void> {

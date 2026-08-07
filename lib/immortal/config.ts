@@ -26,6 +26,8 @@ export interface ImmortalDemoProvider {
   readonly role: "provider-a" | "provider-b"
   readonly pubkey: string
   readonly offeringCoordinate: string
+  /** Relay carrying this provider's public heads and private session lane. */
+  readonly relayUrl?: string
   readonly policy: {
     readonly variant: string
     readonly quoteClass: "firm"
@@ -78,6 +80,13 @@ export interface ImmortalDemoConfig {
     readonly contractSha256: string
     readonly contractIdentity: ImmortalContractIdentity
   }
+  /** Concurrent direct relay set. Omitted by the single-relay local demo. */
+  readonly relayPool?: readonly {
+    readonly websocketUrl: string
+    readonly healthUrl: string
+    readonly contractSha256: string
+    readonly contractIdentity: ImmortalContractIdentity
+  }[]
   readonly providers: readonly [ImmortalDemoProvider, ImmortalDemoProvider]
   readonly requestContract: ImmortalDemoRequestContract
   readonly lifecycle: {

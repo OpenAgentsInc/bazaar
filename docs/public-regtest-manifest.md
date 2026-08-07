@@ -66,9 +66,12 @@ only `'self'`, the verified gateway HTTPS authority, each direct relay WSS
 authority, and each relay's HTTPS NIP-11 authority. There is no Bazaar relay or
 swap proxy. Relay connection still requires NIP-11 Immortal identity, NIP-42,
 both public/private EOSE snapshots, NIP-59 delivery validation, and then live
-events. A two-relay manifest is attempted in signed order; reconnect rotates
-deterministically while retaining the same browser identity and reopening
-snapshots before live delivery.
+events. A two-relay manifest opens both authenticated sockets concurrently,
+merges their validated replaceable public heads, and maps each ordered provider
+to the corresponding ordered relay. Private RFQs, recovery copies, and later
+session records stay on that provider's relay lane. A disconnected lane
+reconnects independently with the same browser identity and reopens both
+snapshots before the full two-provider market is marked live.
 
 ## Capability-scoped funded sessions
 
@@ -112,9 +115,9 @@ fault acceptance remain deployment gates rather than claims made by unit tests.
 
 Run `pnpm test` for signature, expiry, duplicate/unknown member, digest,
 network, origin, hostile URL, bounded fetch/LKG, CSP, NIP-11, authentication,
-snapshot, capability confinement, gateway-manifest binding, and failover
-coverage. `pnpm build` proves the nonce proxy and App Router production bundle
-together.
+snapshot, provider-specific concurrent relay routing, capability confinement,
+gateway-manifest binding, and failover coverage. `pnpm build` proves the nonce
+proxy and App Router production bundle together.
 
 ## Production release and operation
 

@@ -28,6 +28,7 @@ import {
   readPublicRegtestConfig,
   resetPublicManifestCacheForTests,
 } from "./public-manifest"
+import { publicRequesterRuntimeConfig } from "./public-runtime"
 
 const NOW = 1_800_000_000
 const BAZAAR_REVISION = "11".repeat(20)
@@ -179,6 +180,26 @@ test("signed public-regtest manifest projects only exact public authorities", ()
   assert.deepEqual(
     config.providers.map((provider) => provider.pubkey),
     [PROVIDER_A, PROVIDER_B]
+  )
+})
+
+test("projects both signed relays into provider-specific requester lanes", () => {
+  const { secret, trust } = fixture()
+  const parsed = parseSignedPublicRegtestManifest(
+    signedRaw(manifest(), secret),
+    trust,
+    NOW + 1
+  )
+  const projected = publicRequesterRuntimeConfig(parsed)
+  assert.equal(projected.state, "ready")
+  if (projected.state !== "ready") return
+  assert.deepEqual(
+    projected.config.relayPool?.map((relay) => relay.websocketUrl),
+    ["wss://relay-a.example.com", "wss://relay-b.example.com"]
+  )
+  assert.deepEqual(
+    projected.config.providers.map((provider) => provider.relayUrl),
+    ["wss://relay-a.example.com", "wss://relay-b.example.com"]
   )
 })
 

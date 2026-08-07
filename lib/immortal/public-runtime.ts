@@ -26,6 +26,7 @@ export function publicRequesterRuntimeConfig(
     role: provider.role,
     pubkey: provider.pubkey,
     offeringCoordinate: provider.offeringCoordinate,
+    relayUrl: config.relays[index]?.websocketUrl,
     policy: {
       variant: `public-funded-${index + 1}`,
       quoteClass: "firm" as const,
@@ -51,6 +52,12 @@ export function publicRequesterRuntimeConfig(
         contractSha256: relay.contractSha256,
         contractIdentity: relay.contractIdentity,
       },
+      relayPool: config.relays.map((candidate) => ({
+        websocketUrl: candidate.websocketUrl,
+        healthUrl: config.gateway.baseUrl,
+        contractSha256: candidate.contractSha256,
+        contractIdentity: candidate.contractIdentity,
+      })),
       providers,
       requestContract: {
         schema: "openagents.immortal.no-spend-request-contract.v1",

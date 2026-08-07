@@ -31,6 +31,7 @@ export interface MarketRoute {
   readonly providerPubkey: string
   readonly offeringCoordinate: string
   readonly offeringEventId: string
+  readonly relayUrl: string
   readonly inputAsset: MarketAsset
   readonly outputAsset: MarketAsset
   readonly minimum: string
@@ -212,6 +213,7 @@ export function foldMarketHeads(
         providerPubkey: provider.pubkey,
         offeringCoordinate: coordinate,
         offeringEventId: event.id,
+        relayUrl: provider.relayUrl ?? config.relay.websocketUrl,
         inputAsset,
         outputAsset,
         minimum: side.minimum,
