@@ -50,6 +50,13 @@ test("public regtest completes reverse and submarine swaps", async ({
   await page.getByRole("button", { name: "Reverse swap direction" }).click()
   const submarine = await completeJourney(page, "submarine")
 
+  await expect
+    .poll(publicServiceReady, {
+      message: "public service should reconverge before isolation admission",
+      timeout: 90_000,
+      intervals: [1_000, 2_000, 5_000],
+    })
+    .toBe(true)
   const otherPage = await context.newPage()
   await otherPage.goto("/", { waitUntil: "domcontentloaded" })
   await ready(otherPage)
@@ -84,3 +91,16 @@ test("public regtest completes reverse and submarine swaps", async ({
   await writeFile(receiptPath, `${JSON.stringify(receipt, null, 2)}\n`, "utf8")
   expect(await revokeStoredSession(page)).toBe(true)
 })
+
+async function publicServiceReady(): Promise<boolean> {
+  const response = await fetch("https://gateway.34-41-78-122.sslip.io/readyz", {
+    cache: "no-store",
+  })
+  if (response.status !== 200) return false
+  const value = (await response.json()) as Record<string, unknown>
+  return (
+    value.ready === true &&
+    Array.isArray(value.failures) &&
+    value.failures.length === 0
+  )
+}

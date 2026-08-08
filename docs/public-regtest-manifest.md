@@ -247,11 +247,20 @@ at
 
 The service fault matrix subsequently passed both relays, both providers, both
 Bitcoin nodes, all three Lightning nodes, the gateway, operator, and a real
-host reboot. The final service runtime is
-`94b54440268c69cd72e19ff6f753faa8f59a0682`; its public conformance record is
+host reboot. The promotion gate then found that persisted normal channel state
+did not prove live peer connectivity after reboot. Readiness now requires two
+connected normal channels on every node and restart recovery reconnects all
+three known edges. The corrected service runtime is
+`71da329233cea1ce20a94982469bde6a3697e883`; its public conformance record is
 in the Immortal repository. A final Bazaar promotion must sign that exact
 service revision and rerun `pnpm test:public-regtest` against the immutable
 release candidate before assigning the public alias.
+
+A funded journey may briefly make readiness false while the two Bitcoin nodes
+reconverge after private mining. New tabs remain fail-closed during that window;
+the external acceptance gate waits for signed readiness before asserting a new
+isolated session. The application still does not retry session creation
+automatically.
 
 Reverse quote previews use a fresh per-collection payment hash shared across
 the two provider lanes. It prevents CLN from recovering a stale hold invoice
