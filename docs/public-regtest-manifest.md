@@ -234,6 +234,25 @@ to each funded journey's runtime so the operator gate stays below the public
 eight-session-per-minute IP quota. `BAZAAR_PUBLIC_REGTEST_SESSION_PACING_MS`
 may increase that pause but cannot reduce it below eight seconds.
 
+## First public qualification
+
+The 2026-08-08 public soak completed five overlapping funded sessions and 50
+fresh sequential funded sessions, alternating reverse and submarine rails.
+Every browser session used an isolated capability, reloaded during effect
+progression, recovered the exact terminal evidence, and revoked itself. Both
+provider databases then reported zero active/unresolved reservations and zero
+pending/running/unresolved/page watch jobs. The sanitized receipt is committed
+at
+[`conformance/records/2026-08-08-public-regtest-soak.json`](conformance/records/2026-08-08-public-regtest-soak.json).
+
+The service fault matrix subsequently passed both relays, both providers, both
+Bitcoin nodes, all three Lightning nodes, the gateway, operator, and a real
+host reboot. The final service runtime is
+`94b54440268c69cd72e19ff6f753faa8f59a0682`; its public conformance record is
+in the Immortal repository. A final Bazaar promotion must sign that exact
+service revision and rerun `pnpm test:public-regtest` against the immutable
+release candidate before assigning the public alias.
+
 Reverse quote previews use a fresh per-collection payment hash shared across
 the two provider lanes. It prevents CLN from recovering a stale hold invoice
 when a visitor refreshes quotes; the private funded worker still creates and

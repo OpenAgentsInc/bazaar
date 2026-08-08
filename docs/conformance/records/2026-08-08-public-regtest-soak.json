@@ -1,0 +1,70 @@
+{
+  "schema": "openagents.bazaar.public-regtest-qualification.v1",
+  "origin": "https://bazaar.openagents.com",
+  "started_at": 1786153783,
+  "completed_at": 1786156237,
+  "revisions": {
+    "bazaar": "d1facdb421b1ed09ded43fea655ec1d44ba63ef6",
+    "immortal": "04e7258e8ee3f5338fa723f92342d138ae357555"
+  },
+  "providers_discovered": 2,
+  "concurrent": {
+    "requested": 5,
+    "completed": 5,
+    "reverse": 3,
+    "submarine": 2,
+    "maximum_duration_seconds": 158,
+    "provider_selections": { "232aa9c2d364": 5 }
+  },
+  "sequential": {
+    "requested": 50,
+    "completed": 50,
+    "reverse": 25,
+    "submarine": 25,
+    "maximum_duration_seconds": 46,
+    "provider_selections": { "232aa9c2d364": 50 }
+  },
+  "session_pacing_milliseconds": 10000,
+  "isolation": {
+    "concurrent_sessions_distinct": true,
+    "fresh_context_per_sequential_session": true,
+    "reload_replay_checked_per_session": true
+  },
+  "browser_network_authorities": [
+    "bazaar.openagents.com",
+    "gateway.34-41-78-122.sslip.io",
+    "relay-a.34-41-78-122.nip.io",
+    "relay-b.34-41-78-122.sslip.io"
+  ],
+  "public_service": {
+    "schema": "openagents.immortal.public-regtest-service-readiness.v1",
+    "revision": "04e7258e8ee3f5338fa723f92342d138ae357555",
+    "provider_pubkeys": [
+      "232aa9c2d3642abf9ba89e4c9f704b018630acfaf3e2c9faa2faa2b708341b18",
+      "2ad9b8e40ab714f4f5230fd721b8600237d24eda9ed5a5af3ed608dd1abcdb59"
+    ],
+    "lightning_node_ids": [
+      "028dfcd173847b832bb0e98d67664d55c7260d0b90974987b72e61c83a4dabe5b4",
+      "03554e7bb595d6ed0d3e897b4407b585b0b809a826e5b81cd7e172ee798a151d64",
+      "0302424c95ba91f9322bdf47a1884ef507a369ad8a39eaee3f386464f4d58d6a6b"
+    ],
+    "ready": true,
+    "failures": []
+  },
+  "post_soak": {
+    "active_sessions": 0,
+    "outstanding_sat": 0,
+    "provider_a_active_or_unresolved_reservations": 0,
+    "provider_b_active_or_unresolved_reservations": 0,
+    "provider_a_pending_or_unresolved_watch_jobs": 0,
+    "provider_b_pending_or_unresolved_watch_jobs": 0
+  },
+  "test_results": {
+    "funded_concurrency": "passed",
+    "funded_sequential_soak": "passed",
+    "reload_effect_replay": "passed",
+    "browser_authority_policy": "passed",
+    "edge_security_policy": "passed",
+    "receipt_material_scan": "passed"
+  }
+}
