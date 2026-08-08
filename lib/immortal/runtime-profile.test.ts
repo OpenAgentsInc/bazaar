@@ -1,7 +1,14 @@
 import assert from "node:assert/strict"
 import test from "node:test"
 
-import { publicPreviewPaymentHash } from "./runtime"
+import {
+  PUBLIC_PREVIEW_RESERVATION_CLASS,
+  publicPreviewPaymentHash,
+} from "./runtime"
+
+test("public browser previews request non-locking soft reservations", () => {
+  assert.equal(PUBLIC_PREVIEW_RESERVATION_CLASS, "soft")
+})
 
 test("reverse quote previews rotate their provider hold-invoice hash", () => {
   const templatePaymentHash = "11".repeat(32)

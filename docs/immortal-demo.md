@@ -48,6 +48,12 @@ and fee arithmetic, and reservation disclosure checks. Bazaar selects the
 highest output, then the lowest maximum total fee, then the lexicographically
 lowest provider key. The disclosure shows both signed rows and their expiry;
 an expired selection is removed and refreshed rather than silently repriced.
+These browser RFQs explicitly request `soft` provider-signed reservations:
+they are reviewable, expiring Quotes but do not consume the providers' durable
+funding inventory. After submission, the private execution worker opens its
+own two-provider RFQ and accepts only fresh `hard` Quotes backed by durable
+capacity. This separation prevents abandoned browser previews from starving
+later demo swaps while preserving the verify-before-fund boundary.
 Public-regtest execution preserves the highest maximum-total-fee value among
 those two comparable reviewed Quotes as the worker's comparison ceiling.
 

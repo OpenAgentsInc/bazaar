@@ -72,6 +72,8 @@ import {
 } from "./lifecycle"
 import { PUBLIC_FUNDED_COMPLETION_WINDOW_SECONDS } from "./public-policy"
 
+export const PUBLIC_PREVIEW_RESERVATION_CLASS = "soft" as const
+
 type StatusListener = (status: ImmortalRuntimeStatus) => void
 type ProvenanceListener = (provenance: ImmortalRuntimeProvenance | null) => void
 type MarketListener = (market: ImmortalMarketSnapshot) => void
@@ -1426,6 +1428,9 @@ function createRfqProfile(
       templatePaymentHash: template.paymentHash,
       logicalRequestId,
     }),
+    // Browser Quotes are signed previews. The private execution worker opens
+    // a separate hard-reservation RFQ only after the user submits the swap.
+    reservation_class: PUBLIC_PREVIEW_RESERVATION_CLASS,
     requester_public_keys: template.requesterPublicKeys.map((key) => ({
       leg_id: key.legId,
       path: key.path,

@@ -207,3 +207,10 @@ Reverse quote previews use a fresh per-collection payment hash shared across
 the two provider lanes. It prevents CLN from recovering a stale hold invoice
 when a visitor refreshes quotes; the private funded worker still creates and
 retains the real preimage for the selected demo journey.
+
+Browser preview RFQs also request `reservation_class: soft`. Each provider
+still signs the complete expiring Quote and a provider-signed reservation
+disclosure, but it does not create a durable hard-capacity allocation. The
+private funded worker uses its separate requester identity and the default
+hard-reservation path only after submission. A preview must never reduce the
+capacity available to a later funded request.
