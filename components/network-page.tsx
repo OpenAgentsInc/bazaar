@@ -48,7 +48,7 @@ export function NetworkPage({ publicConfig, live }: NetworkPageProps) {
     pinnedRelayUrls.length > 0 ? pinnedRelayUrls.join(",") : RELAY_PLACEHOLDER
 
   return (
-    <main className="dark min-h-svh bg-background px-5 py-8 text-foreground sm:px-10">
+    <main className="dark h-svh overflow-y-auto bg-background px-5 py-8 text-foreground sm:px-10">
       <div className="mx-auto max-w-5xl space-y-6">
         <header className="flex flex-wrap items-center justify-between gap-3">
           <div>
