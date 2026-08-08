@@ -263,7 +263,8 @@ function defaultImmortalDir() {
   return process.env.IMMORTAL_DIR ?? join(homedir(), "work", "immortal");
 }
 async function spinUpNode(args, onLine) {
-  if (args.relays) for (const relay of args.relays) assertWsUrl(relay, "relays[]");
+  if (args.relays)
+    for (const relay of args.relays) assertWsUrl(relay, "relays[]");
   if (args.gateway) assertHttpUrl(args.gateway, "gateway");
   if (args.addnode && !/^[a-z0-9.:[\]-]{1,253}$/i.test(args.addnode)) {
     return toolError(
@@ -281,12 +282,13 @@ async function spinUpNode(args, onLine) {
       `${script} does not exist. The immortal join kit (immortal#45) is not present in this checkout. Clone https://github.com/OpenAgentsInc/immortal (or set IMMORTAL_DIR/immortalDir) and update it once the join kit lands.`
     );
   }
-  const scriptArgs = [args.role, "--network", "public-regtest"];
+  const scriptArgs = [args.role];
   if (args.relays && args.relays.length > 0) {
     scriptArgs.push("--relays", args.relays.join(","));
   }
   if (args.addnode) scriptArgs.push("--addnode", args.addnode);
   if (args.gateway) scriptArgs.push("--gateway", args.gateway);
+  if (args.stateDir) scriptArgs.push("--state-dir", args.stateDir);
   const lines = [];
   const pushLine = (line) => {
     if (line.length === 0) return;
@@ -355,7 +357,11 @@ async function spinUpNode(args, onLine) {
         resolve2(ok(payload));
       } else {
         resolve2(
-          toolError("join_failed", `join-regtest.sh exited with code ${code}.`, payload)
+          toolError(
+            "join_failed",
+            `join-regtest.sh exited with code ${code}.`,
+            payload
+          )
         );
       }
     });
@@ -1927,7 +1933,7 @@ async function getQuotes(args) {
   }
   assertHttpUrl(manifestUrl, "manifestUrl");
   const manifest = await fetchManifestSummary(manifestUrl);
-  if (manifest.verification.signatureEvent !== "verified" || manifest.verification.contentBinding !== "bound" || manifest.serviceState !== "ready") {
+  if (manifest.verification.signatureEvent !== "verified" || manifest.verification.contentBinding !== "bound" || manifest.serviceState !== "live") {
     throw new BoundaryError(
       "manifest_untrusted",
       "The public-regtest manifest is not signed, bound, and ready."
@@ -2047,6 +2053,9 @@ async function requestProviderQuote(client, route, privateKey, requesterPubkey, 
   };
   const offeringContent = JSON.parse(route.offering.content);
   const profile = offeringContent.mkt_swp;
+  const confirmationPolicy = firstConfirmationPolicy(
+    profile.confirmation_policies
+  );
   const signingRequest = await Effect2.runPromise(
     requesterRfq(
       client,
@@ -2059,8 +2068,8 @@ async function requestProviderQuote(client, route, privateKey, requesterPubkey, 
           constraints: {
             allowed_script_modes: arrayStrings(profile.script_modes),
             asset_pair: [LIGHTNING, CHAIN],
-            confirmation_policy: profile.confirmation_policy,
-            desired_completion_time: now + 7800,
+            confirmation_policy: confirmationPolicy,
+            desired_completion_time: now + 10800,
             destination_commitment_sha256: digestJson({
               logicalRequestId,
               destination: "no-spend"
@@ -2362,6 +2371,27 @@ function compareDecimal(left, right) {
 function arrayStrings(value) {
   return Array.isArray(value) ? value.filter((item) => typeof item === "string") : [];
 }
+function firstConfirmationPolicy(value) {
+  if (!Array.isArray(value) || value.length === 0) {
+    throw new Error("offering has no confirmation policy");
+  }
+  const policy = value[0];
+  if (policy === null || typeof policy !== "object" || Array.isArray(policy)) {
+    throw new Error("offering confirmation policy is invalid");
+  }
+  const source = policy;
+  const required = [
+    "minimum_confirmations",
+    "reorg_safety_blocks",
+    "zero_confirmation",
+    "rbf",
+    "replacement"
+  ];
+  if (required.some((key) => typeof source[key] !== "string")) {
+    throw new Error("offering confirmation policy is incomplete");
+  }
+  return Object.fromEntries(required.map((key) => [key, source[key]]));
+}
 function jsonValue(value) {
   return Schema2.decodeUnknownSync(Schema2.Json)(value);
 }
@@ -2447,7 +2477,7 @@ function buildServer() {
     "spin_up_node",
     {
       title: "Spin up a local regtest node",
-      description: APPROVAL_NOTE + "Runs the immortal join kit `scripts/join-regtest.sh <role> --network public-regtest` locally (IMMORTAL_DIR, default ~/work/immortal; docker required). The script starts bitcoind/CLN/immortal-provider (or relay + Postgres), generates a FRESH identity owned by the local daemon \u2014 never by this server \u2014 and publishes kind 39600/39601 on start. Output is streamed as progress notifications and the last 200 lines are returned; 15-minute bound. " + HARD_BOUNDARIES,
+      description: APPROVAL_NOTE + "Runs the immortal join kit `scripts/join-regtest.sh <role>` locally (IMMORTAL_DIR, default ~/work/immortal; docker required). The script starts bitcoind/CLN/immortal-provider (or relay + Postgres), generates a FRESH identity owned by the local daemon \u2014 never by this server \u2014 and publishes kind 39600/39601 on start. Output is streamed as progress notifications and the last 200 lines are returned; 15-minute bound. " + HARD_BOUNDARIES,
       inputSchema: {
         role: z.enum(["provider", "relay"]).describe(
           "Node role to bring up: a quoting provider or a public relay."
@@ -2459,6 +2489,9 @@ function buildServer() {
           "bitcoind regtest addnode peer endpoint host[:port] (passed as --addnode)."
         ),
         gateway: z.string().max(2048).optional().describe("Public regtest gateway base URL (passed as --gateway)."),
+        stateDir: z.string().max(1024).optional().describe(
+          "Absolute private state directory owned by this node (passed as --state-dir)."
+        ),
         immortalDir: z.string().max(1024).optional().describe(
           "Immortal checkout override (defaults to IMMORTAL_DIR or ~/work/immortal)."
         )

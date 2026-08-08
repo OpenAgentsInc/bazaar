@@ -131,6 +131,8 @@ trust-root-pinned verification remains with the browser runtime
 
 ```sh
 pnpm --filter @openagentsinc/immortal-mcp conformance
+IMMORTAL_MANIFEST_URL=https://bazaar.openagents.com/bazaar-public-regtest.json \
+  pnpm --filter @openagentsinc/immortal-mcp conformance:live
 ```
 
 Spawns the server over stdio, performs `initialize` + `tools/list`, asserts
@@ -138,3 +140,5 @@ the eight v1 tools with JSON schemas and annotations (read-only vs effectful),
 calls `request_listing` (pure) and asserts the GitHub URL shape, proves
 `get_quotes` refuses to open a network path without an explicit signed
 manifest, and asserts the mainnet-address rejection of `faucet_fund`.
+The live gate sends no-spend RFQs to the two manifest-pinned providers and
+requires two engine-validated signed Quotes plus a deterministic winner.

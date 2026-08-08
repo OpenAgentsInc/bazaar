@@ -93,7 +93,7 @@ export async function getQuotes(args: GetQuotesArgs): Promise<ToolResult> {
   if (
     manifest.verification.signatureEvent !== "verified" ||
     manifest.verification.contentBinding !== "bound" ||
-    manifest.serviceState !== "ready"
+    manifest.serviceState !== "live"
   ) {
     throw new BoundaryError(
       "manifest_untrusted",
@@ -254,6 +254,9 @@ async function requestProviderQuote(
     unknown
   >
   const profile = offeringContent.mkt_swp as Record<string, unknown>
+  const confirmationPolicy = firstConfirmationPolicy(
+    profile.confirmation_policies
+  )
   const signingRequest = await Effect.runPromise(
     requesterRfq(
       client,
@@ -266,8 +269,8 @@ async function requestProviderQuote(
           constraints: {
             allowed_script_modes: arrayStrings(profile.script_modes),
             asset_pair: [LIGHTNING, CHAIN],
-            confirmation_policy: profile.confirmation_policy,
-            desired_completion_time: now + 7_800,
+            confirmation_policy: confirmationPolicy,
+            desired_completion_time: now + 10_800,
             destination_commitment_sha256: digestJson({
               logicalRequestId,
               destination: "no-spend",
@@ -623,6 +626,28 @@ function arrayStrings(value: unknown): string[] {
   return Array.isArray(value)
     ? value.filter((item): item is string => typeof item === "string")
     : []
+}
+
+function firstConfirmationPolicy(value: unknown): Record<string, string> {
+  if (!Array.isArray(value) || value.length === 0) {
+    throw new Error("offering has no confirmation policy")
+  }
+  const policy = value[0]
+  if (policy === null || typeof policy !== "object" || Array.isArray(policy)) {
+    throw new Error("offering confirmation policy is invalid")
+  }
+  const source = policy as Record<string, unknown>
+  const required = [
+    "minimum_confirmations",
+    "reorg_safety_blocks",
+    "zero_confirmation",
+    "rbf",
+    "replacement",
+  ] as const
+  if (required.some((key) => typeof source[key] !== "string")) {
+    throw new Error("offering confirmation policy is incomplete")
+  }
+  return Object.fromEntries(required.map((key) => [key, source[key] as string]))
 }
 
 function jsonValue(value: unknown): Schema.Json {
