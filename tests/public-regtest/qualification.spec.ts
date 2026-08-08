@@ -33,6 +33,12 @@ test("public regtest sustains concurrent and sequential funded sessions", async 
     50,
     100
   )
+  const pacingMilliseconds = boundedEnvironment(
+    "BAZAAR_PUBLIC_REGTEST_SESSION_PACING_MS",
+    10_000,
+    8_000,
+    60_000
+  )
   const startedAt = Math.floor(Date.now() / 1_000)
   const unexpectedAuthorities = new Set<string>()
 
@@ -51,6 +57,11 @@ test("public regtest sustains concurrent and sequential funded sessions", async 
 
   const sequential = []
   for (let index = 0; index < sequentialCount; index += 1) {
+    if (index > 0) {
+      await new Promise((resolveDelay) =>
+        setTimeout(resolveDelay, pacingMilliseconds)
+      )
+    }
     sequential.push(
       await runIsolatedJourney(
         browser,
@@ -75,6 +86,7 @@ test("public regtest sustains concurrent and sequential funded sessions", async 
     providers_discovered: 2,
     concurrent: summarize(concurrent),
     sequential: summarize(sequential),
+    session_pacing_milliseconds: pacingMilliseconds,
     isolation: {
       concurrent_sessions_distinct: true,
       fresh_context_per_sequential_session: true,

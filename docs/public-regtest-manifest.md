@@ -229,7 +229,10 @@ and a final readiness snapshot; the same receipt scanner rejects custody
 material and private session data. Counts may be increased with
 `BAZAAR_PUBLIC_REGTEST_CONCURRENCY` and
 `BAZAAR_PUBLIC_REGTEST_SEQUENTIAL_COUNT`, but they cannot be reduced below the
-release thresholds.
+release thresholds. Sequential admission is paced by ten seconds in addition
+to each funded journey's runtime so the operator gate stays below the public
+eight-session-per-minute IP quota. `BAZAAR_PUBLIC_REGTEST_SESSION_PACING_MS`
+may increase that pause but cannot reduce it below eight seconds.
 
 Reverse quote previews use a fresh per-collection payment hash shared across
 the two provider lanes. It prevents CLN from recovering a stale hold invoice
