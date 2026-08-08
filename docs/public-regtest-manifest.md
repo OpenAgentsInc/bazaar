@@ -245,16 +245,20 @@ pending/running/unresolved/page watch jobs. The sanitized receipt is committed
 at
 [`conformance/records/2026-08-08-public-regtest-soak.json`](conformance/records/2026-08-08-public-regtest-soak.json).
 
-The service fault matrix subsequently passed both relays, both providers, both
-Bitcoin nodes, all three Lightning nodes, the gateway, operator, and a real
-host reboot. The promotion gate then found that persisted normal channel state
-did not prove live peer connectivity after reboot. Readiness now requires two
-connected normal channels on every node and restart recovery reconnects all
-three known edges. The corrected service runtime is
-`71da329233cea1ce20a94982469bde6a3697e883`; its public conformance record is
-in the Immortal repository. A final Bazaar promotion must sign that exact
-service revision and rerun `pnpm test:public-regtest` against the immutable
-release candidate before assigning the public alias.
+The final release passed both relays, both providers, both Bitcoin nodes, all
+three Lightning nodes, the gateway, operator, and a real host reboot. Readiness
+requires two connected normal channels on every node and the persistent miner
+wallet to be loaded after Bitcoin A replacement. The signed release pairs
+Bazaar `3e2e44a313b1d0a0ab6225217fd3e739f7217e7a` with Immortal
+`907b693b1765b3e9e631cae81aa27fa83efa444b`. Post-reboot reverse and submarine
+journeys, reload replay, browser-session isolation, receipt scanning, and a
+rollback between two compatible immutable deployments all passed. The final
+sanitized release receipt is
+[`conformance/records/2026-08-08-public-regtest-release.json`](conformance/records/2026-08-08-public-regtest-release.json).
+
+One failed diagnostic admission is deliberately retained until its one-hour
+expiry. It has zero outstanding sats and no active provider reservation or
+watch job; deleting it would violate the service's evidence-retention policy.
 
 A funded journey may briefly make readiness false while the two Bitcoin nodes
 reconverge after private mining. New tabs remain fail-closed during that window;

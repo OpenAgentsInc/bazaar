@@ -1,0 +1,84 @@
+{
+  "schema": "openagents.bazaar.public-regtest-acceptance.v1",
+  "origin": "https://bazaar.openagents.com",
+  "completed_at": 1786162821,
+  "revisions": {
+    "bazaar": "3e2e44a313b1d0a0ab6225217fd3e739f7217e7a",
+    "immortal": "907b693b1765b3e9e631cae81aa27fa83efa444b"
+  },
+  "deployment": {
+    "primary_id": "dpl_CnCPVkuz3B5c51NCjB7kqu37zwtQ",
+    "primary_url": "https://bazaar-pu56yzo7l-open-agents.vercel.app",
+    "rollback_id": "dpl_CPNJfUdoSmbYKai4rCZd6Z7dQXM1",
+    "rollback_url": "https://bazaar-m585cvfoc-open-agents.vercel.app",
+    "rollback_edge_gate": "passed",
+    "restored_edge_gate": "passed"
+  },
+  "providers_discovered": 2,
+  "journeys": {
+    "reverse": {
+      "direction": "reverse",
+      "outcome": "requester_rails_verified",
+      "selected_provider_prefix": "232aa9c2d364",
+      "unselected_provider_released": true,
+      "exact_effect_replay_after_reload": true
+    },
+    "submarine": {
+      "direction": "submarine",
+      "outcome": "requester_rails_verified",
+      "selected_provider_prefix": "232aa9c2d364",
+      "unselected_provider_released": true,
+      "exact_effect_replay_after_reload": true
+    }
+  },
+  "isolation": {
+    "reload_preserved_session": true,
+    "new_session_isolated": true,
+    "second_tab_isolated": true
+  },
+  "browser_network_authorities": [
+    "bazaar.openagents.com",
+    "gateway.34-41-78-122.sslip.io",
+    "relay-a.34-41-78-122.nip.io",
+    "relay-b.34-41-78-122.sslip.io"
+  ],
+  "qualification": {
+    "record": "2026-08-08-public-regtest-soak.json",
+    "concurrent_completed": 5,
+    "sequential_completed": 50,
+    "reverse_completed": 28,
+    "submarine_completed": 27,
+    "reload_replay_per_session": true
+  },
+  "operations": {
+    "fault_matrix_services": 11,
+    "host_rebooted_at": "2026-08-08T04:17:39Z",
+    "miner_wallet_loaded_after_bitcoin_a_replacement": true,
+    "active_provider_alerts": 0,
+    "provider_a_active_or_unresolved_reservations": 0,
+    "provider_b_active_or_unresolved_reservations": 0,
+    "provider_a_pending_or_unresolved_watch_jobs": 0,
+    "provider_b_pending_or_unresolved_watch_jobs": 0,
+    "gateway_active_sessions": 1,
+    "gateway_outstanding_sat": 0,
+    "retained_session_note": "One failed diagnostic browser admission is retained until its one-hour expiry; it has no outstanding effect and was not deleted.",
+    "open_tcp_ports": [22, 443],
+    "unexpected_open_tcp_ports": []
+  },
+  "test_results": {
+    "funded_browser_acceptance": "passed",
+    "browser_authority_policy": "passed",
+    "edge_security_policy": "passed",
+    "host_and_service_recovery": "passed",
+    "compatible_rollback": "passed",
+    "receipt_material_scan": "passed"
+  },
+  "claims": {
+    "regtest_only": true,
+    "single_operator": true,
+    "independent_operators": false,
+    "mainnet": false,
+    "production_sla": false,
+    "public_miner_or_rpc": false
+  }
+}
