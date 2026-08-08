@@ -6,6 +6,7 @@ repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 : "${BAZAAR_PUBLIC_REGTEST_IMMORTAL_REVISION:?set the deployed Immortal revision}"
 
 cd "${repo_root}"
+node scripts/check-public-regtest-edge.mjs
 BAZAAR_PUBLIC_REGTEST_QUALIFICATION=true \
   pnpm exec playwright test \
     --config playwright.public-regtest.config.ts \

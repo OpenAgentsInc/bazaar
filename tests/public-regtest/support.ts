@@ -99,6 +99,36 @@ export async function storedCapability(page: Page): Promise<string> {
   })
 }
 
+export async function revokeStoredSession(page: Page): Promise<boolean> {
+  return page.evaluate(async () => {
+    for (const [key, encoded] of Object.entries(sessionStorage)) {
+      try {
+        const value = JSON.parse(encoded) as Record<string, unknown>
+        if (
+          typeof value.gatewayBaseUrl !== "string" ||
+          typeof value.sandboxSessionId !== "string" ||
+          typeof value.capability !== "string"
+        ) {
+          continue
+        }
+        const response = await fetch(
+          `${value.gatewayBaseUrl}/v1/public-regtest/sessions/${value.sandboxSessionId}`,
+          {
+            method: "DELETE",
+            headers: { Authorization: `ImmortalRegtest ${value.capability}` },
+          }
+        )
+        if (!response.ok) return false
+        sessionStorage.removeItem(key)
+        return true
+      } catch {
+        // Ignore unrelated tab storage and make cleanup best-effort on failure.
+      }
+    }
+    return true
+  })
+}
+
 export function rejectSensitiveMaterial(value: unknown): void {
   if (Array.isArray(value)) {
     value.forEach(rejectSensitiveMaterial)

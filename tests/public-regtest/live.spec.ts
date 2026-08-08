@@ -8,6 +8,7 @@ import {
   ready,
   rejectSensitiveMaterial,
   requiredEnvironment,
+  revokeStoredSession,
   storedCapability,
 } from "./support"
 
@@ -53,6 +54,7 @@ test("public regtest completes reverse and submarine swaps", async ({
   await otherPage.goto("/", { waitUntil: "domcontentloaded" })
   await ready(otherPage)
   expect(await storedCapability(otherPage)).not.toBe(secondSessionCapability)
+  expect(await revokeStoredSession(otherPage)).toBe(true)
   await otherPage.close()
 
   expect([...unexpectedAuthorities]).toEqual([])
@@ -80,4 +82,5 @@ test("public regtest completes reverse and submarine swaps", async ({
   )
   await mkdir(dirname(receiptPath), { recursive: true })
   await writeFile(receiptPath, `${JSON.stringify(receipt, null, 2)}\n`, "utf8")
+  expect(await revokeStoredSession(page)).toBe(true)
 })

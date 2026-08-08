@@ -202,6 +202,13 @@ authorities, and writes a versioned public-safe receipt. The receipt scanner
 rejects capabilities, destinations, invoices, custody fields, and raw
 transactions. Bazaar deliberately has no analytics SDK; browser state and the
 acceptance receipt are the only client-side operational records.
+The runner revokes every temporary gateway session after its assertions and
+also attempts revocation from failure cleanup, preventing qualification runs
+from consuming the shared session ceiling until expiry.
+Before opening a browser, the same command requires the public page to report
+ready, checks HSTS, framing, content-type, referrer, and cache headers, proves
+the CSP contains exactly the signed gateway/relay authorities without a
+wildcard, and proves an unapproved origin receives no gateway admission.
 
 Before declaring a public launch qualified, run the operator-triggered funded
 soak against the exact deployed revisions:
@@ -217,8 +224,9 @@ sequential browser sessions alternating reverse and submarine swaps. Every
 session reloads while the effect is in flight and must recover to a verified
 terminal state. The resulting `target/public-regtest-qualification.json`
 contains only aggregate counts, public revision pins, provider-key prefixes,
-durations, and approved browser authorities; the same receipt scanner rejects
-custody material and private session data. Counts may be increased with
+durations, approved browser authorities, full public provider/node identities,
+and a final readiness snapshot; the same receipt scanner rejects custody
+material and private session data. Counts may be increased with
 `BAZAAR_PUBLIC_REGTEST_CONCURRENCY` and
 `BAZAAR_PUBLIC_REGTEST_SEQUENTIAL_COUNT`, but they cannot be reduced below the
 release thresholds.

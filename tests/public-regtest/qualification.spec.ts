@@ -8,6 +8,7 @@ import {
   ready,
   rejectSensitiveMaterial,
   requiredEnvironment,
+  revokeStoredSession,
   storedCapability,
 } from "./support"
 
@@ -59,6 +60,7 @@ test("public regtest sustains concurrent and sequential funded sessions", async 
     )
   }
   expect([...unexpectedAuthorities]).toEqual([])
+  const service = await publicReadiness()
 
   const receipt = {
     schema: "openagents.bazaar.public-regtest-qualification.v1",
@@ -79,6 +81,14 @@ test("public regtest sustains concurrent and sequential funded sessions", async 
       reload_replay_checked_per_session: true,
     },
     browser_network_authorities: [...ALLOWED_AUTHORITIES].sort(),
+    public_service: service,
+    test_results: {
+      funded_concurrency: "passed",
+      funded_sequential_soak: "passed",
+      reload_effect_replay: "passed",
+      browser_authority_policy: "passed",
+      edge_security_policy: "passed",
+    },
   }
   rejectSensitiveMaterial(receipt)
   const receiptPath = resolve(
@@ -95,8 +105,8 @@ async function runIsolatedJourney(
   unexpectedAuthorities: Set<string>
 ) {
   const context = await browser.newContext()
+  const page = await context.newPage()
   try {
-    const page = await context.newPage()
     observeAuthorities(page, unexpectedAuthorities)
     const started = Date.now()
     await page.goto("/", { waitUntil: "domcontentloaded" })
@@ -107,6 +117,7 @@ async function runIsolatedJourney(
     }
     const isolationToken = await storedCapability(page)
     const journey = await completeJourney(page, direction)
+    expect(await revokeStoredSession(page)).toBe(true)
     return {
       direction,
       durationSeconds: Math.ceil((Date.now() - started) / 1_000),
@@ -114,7 +125,40 @@ async function runIsolatedJourney(
       selectedProviderPrefix: journey.selected_provider_prefix,
     }
   } finally {
+    await revokeStoredSession(page).catch(() => false)
     await context.close()
+  }
+}
+
+async function publicReadiness() {
+  const response = await fetch("https://gateway.34-41-78-122.sslip.io/readyz")
+  expect(response.status).toBe(200)
+  const value = (await response.json()) as Record<string, unknown>
+  expect(value.schema).toBe(
+    "openagents.immortal.public-regtest-service-readiness.v1"
+  )
+  expect(value.ready).toBe(true)
+  expect(value.revision).toBe(
+    requiredEnvironment("BAZAAR_PUBLIC_REGTEST_IMMORTAL_REVISION")
+  )
+  expect(value.failures).toEqual([])
+  expect(value.provider_pubkeys).toEqual([
+    expect.stringMatching(/^[0-9a-f]{64}$/),
+    expect.stringMatching(/^[0-9a-f]{64}$/),
+  ])
+  expect(value.lightning_node_ids).toEqual([
+    expect.stringMatching(/^(?:02|03)[0-9a-f]{64}$/),
+    expect.stringMatching(/^(?:02|03)[0-9a-f]{64}$/),
+    expect.stringMatching(/^(?:02|03)[0-9a-f]{64}$/),
+  ])
+  return {
+    schema: value.schema,
+    revision: value.revision,
+    checked_at: value.checked_at,
+    provider_pubkeys: value.provider_pubkeys,
+    lightning_node_ids: value.lightning_node_ids,
+    ready: value.ready,
+    failures: value.failures,
   }
 }
 
