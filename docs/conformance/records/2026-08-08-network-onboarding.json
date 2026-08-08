@@ -1,0 +1,53 @@
+{
+  "schema": "openagents.bazaar.network-onboarding-acceptance.v1",
+  "status": "passed",
+  "recorded_at": "2026-08-08T05:21:16Z",
+  "network": "bip122:0f9188f13cb7b2c9e5c72a6b65eeada4",
+  "revisions": {
+    "bazaar_implementation": "0d3f6676753cb003cb6b867ca2c91aade6b2b82b",
+    "immortal_join_infrastructure": "5838b23",
+    "immortal_runtime": "907b693b1765b3e9e631cae81aa27fa83efa444b"
+  },
+  "fresh_provider": {
+    "elapsed_seconds": 56,
+    "maximum_seconds": 600,
+    "pubkey": "4abf91baeb62b561288ec27ada3a81edf3855689de593f13792fbec428a20d83",
+    "trust": "discovered",
+    "state": "ready",
+    "chain_height": 764,
+    "chain_peers": 1,
+    "faucet_requests_paid": 2,
+    "private_material_recorded": false
+  },
+  "production_browser": {
+    "url": "https://bazaar.openagents.com/network",
+    "providers_ready": 3,
+    "providers_total": 3,
+    "relays_ready": 2,
+    "relays_total": 2,
+    "joined_provider_label": "4abf91ba · unpinned",
+    "console_errors": 0
+  },
+  "mcp": {
+    "tools": 8,
+    "network_status_nip42_authenticated": true,
+    "expected_discovered_provider_ready": true,
+    "engine_validated_signed_quotes": 2,
+    "deterministic_quote_selection": true,
+    "node_health_running_services": 5,
+    "get_quotes_can_order_or_fund": false
+  },
+  "verification": [
+    "pnpm --filter @openagentsinc/immortal-mcp conformance",
+    "IMMORTAL_EXPECT_DISCOVERED_PROVIDER=<public key> pnpm --filter @openagentsinc/immortal-mcp conformance:live",
+    "pnpm check",
+    "production Chromium /network visual and console check"
+  ],
+  "claims": {
+    "regtest_only": true,
+    "mainnet": false,
+    "real_value": false,
+    "operator_pinning_automated": false,
+    "production_sla": false
+  }
+}
