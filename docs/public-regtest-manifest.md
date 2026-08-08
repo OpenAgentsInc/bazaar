@@ -203,6 +203,26 @@ rejects capabilities, destinations, invoices, custody fields, and raw
 transactions. Bazaar deliberately has no analytics SDK; browser state and the
 acceptance receipt are the only client-side operational records.
 
+Before declaring a public launch qualified, run the operator-triggered funded
+soak against the exact deployed revisions:
+
+```sh
+BAZAAR_PUBLIC_REGTEST_BAZAAR_REVISION='<deployed Bazaar commit>' \
+BAZAAR_PUBLIC_REGTEST_IMMORTAL_REVISION='<deployed Immortal commit>' \
+  pnpm test:public-regtest-qualification
+```
+
+The gate completes five funded sessions concurrently, followed by fifty fresh
+sequential browser sessions alternating reverse and submarine swaps. Every
+session reloads while the effect is in flight and must recover to a verified
+terminal state. The resulting `target/public-regtest-qualification.json`
+contains only aggregate counts, public revision pins, provider-key prefixes,
+durations, and approved browser authorities; the same receipt scanner rejects
+custody material and private session data. Counts may be increased with
+`BAZAAR_PUBLIC_REGTEST_CONCURRENCY` and
+`BAZAAR_PUBLIC_REGTEST_SEQUENTIAL_COUNT`, but they cannot be reduced below the
+release thresholds.
+
 Reverse quote previews use a fresh per-collection payment hash shared across
 the two provider lanes. It prevents CLN from recovering a stale hold invoice
 when a visitor refreshes quotes; the private funded worker still creates and

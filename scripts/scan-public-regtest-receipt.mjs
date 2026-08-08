@@ -15,7 +15,12 @@ for (const pattern of forbidden) {
     throw new Error(`receipt failed secret scan: ${pattern}`)
 }
 const receipt = JSON.parse(raw)
-if (receipt.schema !== "openagents.bazaar.public-regtest-acceptance.v1") {
+if (
+  ![
+    "openagents.bazaar.public-regtest-acceptance.v1",
+    "openagents.bazaar.public-regtest-qualification.v1",
+  ].includes(receipt.schema)
+) {
   throw new Error("unexpected public-regtest receipt schema")
 }
 process.stdout.write("public-regtest receipt secret scan: passed\n")
