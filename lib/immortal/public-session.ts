@@ -348,7 +348,9 @@ export class PublicRegtestGatewayClient {
       `/v1/public-regtest/sessions/${capability.sandboxSessionId}`,
       { method: "DELETE" }
     )
-    this.storage.clear()
+    if (this.storage.load()?.capability === capability.capability) {
+      this.storage.clear()
+    }
   }
 
   private authorizedFetch(

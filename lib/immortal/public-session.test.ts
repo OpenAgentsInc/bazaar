@@ -246,4 +246,14 @@ test("capability remains in storage and the authorization header only", async ()
   )
   assert.equal(calls[2]?.url.includes(CAPABILITY), false)
   assert.equal(String(calls[2]?.init.body).includes(CAPABILITY), false)
+
+  const stale = {
+    ...created.capability,
+    sandboxSessionId: "ef".repeat(32),
+    capability: "ed".repeat(32),
+  }
+  await client.revoke(stale)
+  assert.equal(stored.value?.capability, CAPABILITY)
+  await client.revoke(created.capability)
+  assert.equal(stored.value, null)
 })

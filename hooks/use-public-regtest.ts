@@ -165,13 +165,14 @@ export function usePublicRegtest(
   }, [setRuntime])
 
   useEffect(() => {
+    let effectDisposed = false
     disposedRef.current = false
     admittingRef.current = null
     clientRef.current = null
     capabilityRef.current = null
     if (!enabled || result.state !== "ready" || !requesterIdentity) {
       queueMicrotask(() => {
-        if (!disposedRef.current) {
+        if (!effectDisposed && !disposedRef.current) {
           setRuntime({
             state: "inactive",
             detail:
@@ -182,6 +183,7 @@ export function usePublicRegtest(
         }
       })
       return () => {
+        effectDisposed = true
         disposedRef.current = true
       }
     }
@@ -206,11 +208,15 @@ export function usePublicRegtest(
           manifest = await client.refresh(capability)
         } else {
           const created = await client.create(requesterIdentity)
+          if (effectDisposed) {
+            await client.revoke(created.capability).catch(() => undefined)
+            return
+          }
           capability = created.capability
           manifest = created.manifest
         }
+        if (effectDisposed || disposedRef.current) return
         capabilityRef.current = capability
-        if (disposedRef.current) return
         setRuntime({
           state: manifest.dynamicRequest ? "submitted" : "ready",
           detail: manifest.dynamicRequest
@@ -222,23 +228,25 @@ export function usePublicRegtest(
           try {
             await refresh()
           } catch (cause) {
-            if (!disposedRef.current)
+            if (!effectDisposed && !disposedRef.current)
               setRuntime(
                 gatewayFailure(cause, manifestFromState(runtimeRef.current))
               )
           } finally {
-            if (!disposedRef.current)
+            if (!effectDisposed && !disposedRef.current)
               timer = setTimeout(poll, POLL_MILLISECONDS)
           }
         }
         timer = setTimeout(poll, POLL_MILLISECONDS)
       } catch (cause) {
-        if (!disposedRef.current) setRuntime(gatewayFailure(cause, null))
+        if (!effectDisposed && !disposedRef.current)
+          setRuntime(gatewayFailure(cause, null))
       }
     }
     void initialize()
 
     return () => {
+      effectDisposed = true
       disposedRef.current = true
       if (timer) clearTimeout(timer)
       clientRef.current = null
