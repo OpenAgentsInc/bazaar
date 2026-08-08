@@ -68,8 +68,8 @@ test("public regtest completes reverse and submarine swaps", async ({
     journeys: { reverse, submarine },
     isolation: {
       reload_preserved_session: true,
-      new_session_rotated_capability: true,
-      second_tab_received_distinct_capability: true,
+      new_session_isolated: true,
+      second_tab_isolated: true,
     },
     browser_network_authorities: [...ALLOWED_AUTHORITIES].sort(),
   }
