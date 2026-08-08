@@ -47,13 +47,13 @@ export interface PanoramaProvider {
   relayIds: readonly string[]
   feeBps: number
   swaps24h: number
-  volumeSat24h: number
+  volumeSat24h: number | null
 }
 
 export interface PanoramaStats {
   swaps24h: number
-  volumeSat24h: number
-  operatorFeeSat24h: number
+  volumeSat24h: number | null
+  operatorFeeSat24h: number | null
 }
 
 export interface PanoramaNetwork {
@@ -105,7 +105,8 @@ export function trustLabel(label: string, trust?: PanoramaTrust): string {
   return trust === "discovered" ? `${label} · unpinned` : label
 }
 
-export function formatSats(n: number): string {
+export function formatSats(n: number | null): string {
+  if (n === null) return "not disclosed"
   if (n >= 100_000_000) return `${(n / 100_000_000).toFixed(2)} BTC`
   if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M sats`
   return `${n.toLocaleString("en-US")} sats`
@@ -137,8 +138,7 @@ function usePanoramaLayout(network: PanoramaNetwork) {
 
     const relayPos = new Map<string, LayoutPoint>()
     network.relays.forEach((relay, index) => {
-      const angle =
-        -Math.PI / 2 + (index * 2 * Math.PI) / network.relays.length
+      const angle = -Math.PI / 2 + (index * 2 * Math.PI) / network.relays.length
       relayPos.set(relay.id, {
         x: CX + relayRadius * Math.cos(angle),
         y: CY + relayRadius * Math.sin(angle),
@@ -176,11 +176,11 @@ function usePanoramaLayout(network: PanoramaNetwork) {
     const clients: Array<{ x: number; y: number; relayId: string }> = []
     const rand = seededRandom(hash32(network.name))
     for (let i = 0; i < network.clientCount; i += 1) {
-      const relay =
-        network.relays[Math.floor(rand() * network.relays.length)]!
+      const relay = network.relays[Math.floor(rand() * network.relays.length)]!
       const home = relayPos.get(relay.id)!
       const spread = 0.55 + rand() * 0.5
-      const angle = home.angle + (rand() - 0.5) * (Math.PI / network.relays.length) * 1.6
+      const angle =
+        home.angle + (rand() - 0.5) * (Math.PI / network.relays.length) * 1.6
       const radius = relayRadius * (1 - spread * 0.72) + rand() * 18
       clients.push({
         x: CX + radius * Math.cos(angle),
@@ -201,11 +201,19 @@ function usePanoramaLayout(network: PanoramaNetwork) {
     const chordCount = Math.floor(ring.length / 3)
     for (let i = 0; i < chordCount; i += 1) {
       const a = Math.floor(chordRand() * ring.length)
-      const b = (a + 2 + Math.floor(chordRand() * (ring.length - 3))) % ring.length
+      const b =
+        (a + 2 + Math.floor(chordRand() * (ring.length - 3))) % ring.length
       if (a !== b) channels.push([ring[a]!.id, ring[b]!.id])
     }
 
-    return { relayPos, providerPos, clients, channels, relayRadius, providerRadius }
+    return {
+      relayPos,
+      providerPos,
+      clients,
+      channels,
+      relayRadius,
+      providerRadius,
+    }
   }, [network])
 }
 
@@ -294,7 +302,7 @@ function PanoramaBody({
 
   const layout = usePanoramaLayout(network)
   const maxVolume = Math.max(
-    ...network.providers.map((provider) => provider.volumeSat24h),
+    ...network.providers.map((provider) => provider.volumeSat24h ?? 0),
     1
   )
   const relayById = new Map(network.relays.map((relay) => [relay.id, relay]))
@@ -303,7 +311,7 @@ function PanoramaBody({
   )
 
   const topProviders = [...network.providers]
-    .sort((a, b) => b.volumeSat24h - a.volumeSat24h)
+    .sort((a, b) => (b.volumeSat24h ?? 0) - (a.volumeSat24h ?? 0))
     .slice(0, 3)
   const topProviderIds = new Set(topProviders.map((provider) => provider.id))
 
@@ -341,8 +349,8 @@ function PanoramaBody({
         const down =
           providerA.state === "offline" || providerB.state === "offline"
         const volume = Math.min(
-          providerA.volumeSat24h,
-          providerB.volumeSat24h
+          providerA.volumeSat24h ?? 0,
+          providerB.volumeSat24h ?? 0
         )
         const width =
           overlay === "volume" ? 0.6 + (volume / maxVolume) * 1.8 : 0.9
@@ -396,13 +404,12 @@ function PanoramaBody({
           const to = layout.relayPos.get(relayId)
           const relay = relayById.get(relayId)
           if (!to || !relay) return null
-          const down =
-            provider.state === "offline" || relay.state === "offline"
+          const down = provider.state === "offline" || relay.state === "offline"
           const degraded =
             provider.state === "degraded" || relay.state === "degraded"
           const width =
             overlay === "volume"
-              ? 0.7 + (provider.volumeSat24h / maxVolume) * 2.4
+              ? 0.7 + ((provider.volumeSat24h ?? 0) / maxVolume) * 2.4
               : 1
           const pulses = down
             ? 0
@@ -410,7 +417,7 @@ function PanoramaBody({
                 1,
                 Math.round(
                   network.activity *
-                    (1 + (provider.volumeSat24h / maxVolume) * 5)
+                    (1 + ((provider.volumeSat24h ?? 0) / maxVolume) * 5)
                 )
               )
           return (
@@ -474,10 +481,7 @@ function PanoramaBody({
         const at = layout.relayPos.get(relay.id)!
         const discovered = relay.trust === "discovered"
         return (
-          <g
-            key={relay.id}
-            opacity={discovered ? DISCOVERED_OPACITY : 1}
-          >
+          <g key={relay.id} opacity={discovered ? DISCOVERED_OPACITY : 1}>
             <VizNode
               x={at.x}
               y={at.y}
@@ -497,15 +501,12 @@ function PanoramaBody({
         if (!at) return null
         const r =
           overlay === "volume"
-            ? 9 + Math.sqrt(provider.volumeSat24h / maxVolume) * 9
+            ? 9 + Math.sqrt((provider.volumeSat24h ?? 0) / maxVolume) * 9
             : 11
         const labelSide = at.x >= CX ? 1 : -1
         const discovered = provider.trust === "discovered"
         return (
-          <g
-            key={provider.id}
-            opacity={discovered ? DISCOVERED_OPACITY : 1}
-          >
+          <g key={provider.id} opacity={discovered ? DISCOVERED_OPACITY : 1}>
             <VizNode
               x={at.x}
               y={at.y}
@@ -542,7 +543,10 @@ function PanoramaBody({
           width={196}
           height={132}
           rx={8}
-          style={{ fill: "var(--viz-node-fill)", stroke: "var(--viz-boundary)" }}
+          style={{
+            fill: "var(--viz-node-fill)",
+            stroke: "var(--viz-boundary)",
+          }}
           fillOpacity={0.85}
           strokeWidth={1}
         />

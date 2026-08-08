@@ -15,6 +15,7 @@ export interface SpinUpNodeArgs {
   relays?: string[]
   addnode?: string
   gateway?: string
+  stateDir?: string
   immortalDir?: string
 }
 
@@ -29,7 +30,8 @@ export async function spinUpNode(
   args: SpinUpNodeArgs,
   onLine?: (line: string) => void
 ): Promise<ToolResult> {
-  if (args.relays) for (const relay of args.relays) assertWsUrl(relay, "relays[]")
+  if (args.relays)
+    for (const relay of args.relays) assertWsUrl(relay, "relays[]")
   if (args.gateway) assertHttpUrl(args.gateway, "gateway")
   if (args.addnode && !/^[a-z0-9.:[\]-]{1,253}$/i.test(args.addnode)) {
     return toolError(
@@ -50,12 +52,13 @@ export async function spinUpNode(
     )
   }
 
-  const scriptArgs = [args.role, "--network", "public-regtest"]
+  const scriptArgs: string[] = [args.role]
   if (args.relays && args.relays.length > 0) {
     scriptArgs.push("--relays", args.relays.join(","))
   }
   if (args.addnode) scriptArgs.push("--addnode", args.addnode)
   if (args.gateway) scriptArgs.push("--gateway", args.gateway)
+  if (args.stateDir) scriptArgs.push("--state-dir", args.stateDir)
 
   const lines: string[] = []
   const pushLine = (line: string) => {
@@ -130,7 +133,11 @@ export async function spinUpNode(
         resolve(ok(payload))
       } else {
         resolve(
-          toolError("join_failed", `join-regtest.sh exited with code ${code}.`, payload)
+          toolError(
+            "join_failed",
+            `join-regtest.sh exited with code ${code}.`,
+            payload
+          )
         )
       }
     })

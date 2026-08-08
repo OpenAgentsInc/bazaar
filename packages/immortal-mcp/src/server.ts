@@ -2,7 +2,7 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js"
 import { z } from "zod"
 
 import { HARD_BOUNDARIES } from "./boundaries.js"
-import { guarded, toolError } from "./result.js"
+import { guarded } from "./result.js"
 import { faucetFund } from "./tools/faucet-fund.js"
 import { joinNetwork } from "./tools/join-network.js"
 import { listOfferings } from "./tools/list-offerings.js"
@@ -10,6 +10,7 @@ import { networkStatus } from "./tools/network-status.js"
 import { nodeHealth } from "./tools/node-health.js"
 import { requestListing } from "./tools/request-listing.js"
 import { spinUpNode } from "./tools/spin-up-node.js"
+import { getQuotes } from "./tools/get-quotes.js"
 
 export const SERVER_NAME = "immortal-mcp"
 export const SERVER_VERSION = "0.1.0"
@@ -76,7 +77,9 @@ export function buildServer(): McpServer {
           .array(z.string().max(2_048))
           .min(1)
           .max(4)
-          .describe("Regtest relay websocket URLs (wss://…), usually from network_status."),
+          .describe(
+            "Regtest relay websocket URLs (wss://…), usually from network_status."
+          ),
       },
       annotations: { ...READ_ONLY, title: "List live offerings" },
     },
@@ -86,38 +89,39 @@ export function buildServer(): McpServer {
   server.registerTool(
     "get_quotes",
     {
-      title: "Get quotes (not implemented in v1)",
+      title: "Get competing signed quotes",
       description:
-        "Read-only. V1 SCOPE CUT: always returns a typed not_implemented error. The no-spend RFQ flow requires the " +
-        "browser requester engine (verified WASM artifact, NIP-42 authed lanes, NIP-59 gift-wrap transport and the " +
-        "signed request contract), which this standalone Node server does not embed. Quotes are never faked. " +
-        "Use the bazaar swap page for live quotes, and list_offerings for advertised terms. " +
+        "Read-only and no-spend. Loads the pinned zero-import Immortal requester WASM, generates an ephemeral " +
+        "requester identity, authenticates directly to every signed relay with NIP-42, discovers the pinned " +
+        "39600/39601 heads, publishes separately gift-wrapped RFQs to each eligible provider, validates returned " +
+        "signed Quotes through the Immortal session engine, and selects deterministically by highest output, then " +
+        "lowest maximum fee, then provider key. The ephemeral key is never returned or persisted and no Order or " +
+        "funding action is created. " +
         HARD_BOUNDARIES,
       inputSchema: {
-        direction: z
+        manifestUrl: z
           .string()
-          .max(64)
+          .max(2_048)
           .optional()
-          .describe("Intended pair direction, e.g. LN->BTC (recorded in the error for future use)."),
+          .describe(
+            "Signed public-regtest manifest envelope URL; defaults to IMMORTAL_MANIFEST_URL."
+          ),
+        direction: z
+          .enum(["LN->BTC"])
+          .default("LN->BTC")
+          .describe(
+            "No-spend quote direction. V1 supports reverse LN→BTC previews."
+          ),
         amountSat: z
           .number()
           .int()
-          .positive()
-          .optional()
-          .describe("Intended offered amount in regtest sats."),
+          .min(10_000)
+          .max(1_000_000)
+          .describe("Offered amount in regtest sats (10,000..1,000,000)."),
       },
-      annotations: { ...READ_ONLY, title: "Get quotes (not implemented in v1)" },
+      annotations: { ...READ_ONLY, title: "Get competing signed quotes" },
     },
-    async (args) =>
-      toolError(
-        "not_implemented",
-        "get_quotes is a v1 scope cut. The no-spend RFQ contract (competing signed quotes + selection policy) runs " +
-          "inside the verified browser requester engine — NIP-42 authed relay lanes, NIP-59 gift-wrapped RFQ/quote " +
-          "records and the signed request contract — which this standalone server does not embed. Rather than fake " +
-          "quotes, this tool fails closed. Use list_offerings for advertised terms and the bazaar swap page for live " +
-          "quotes.",
-        { requested: args }
-      )
+    async (args) => guarded(() => getQuotes(args))
   )
 
   server.registerTool(
@@ -134,7 +138,9 @@ export function buildServer(): McpServer {
           .string()
           .max(1_024)
           .optional()
-          .describe("Join-kit directory override (defaults to IMMORTAL_JOIN_DIR or ~/work/immortal/deploy/join)."),
+          .describe(
+            "Join-kit directory override (defaults to IMMORTAL_JOIN_DIR or ~/work/immortal/deploy/join)."
+          ),
       },
       annotations: { ...READ_ONLY, title: "Local join-kit node health" },
     },
@@ -147,7 +153,7 @@ export function buildServer(): McpServer {
       title: "Spin up a local regtest node",
       description:
         APPROVAL_NOTE +
-        "Runs the immortal join kit `scripts/join-regtest.sh <role> --network public-regtest` locally " +
+        "Runs the immortal join kit `scripts/join-regtest.sh <role>` locally " +
         "(IMMORTAL_DIR, default ~/work/immortal; docker required). The script starts bitcoind/CLN/immortal-provider " +
         "(or relay + Postgres), generates a FRESH identity owned by the local daemon — never by this server — and " +
         "publishes kind 39600/39601 on start. Output is streamed as progress notifications and the last 200 lines are " +
@@ -156,27 +162,42 @@ export function buildServer(): McpServer {
       inputSchema: {
         role: z
           .enum(["provider", "relay"])
-          .describe("Node role to bring up: a quoting provider or a public relay."),
+          .describe(
+            "Node role to bring up: a quoting provider or a public relay."
+          ),
         relays: z
           .array(z.string().max(2_048))
           .max(4)
           .optional()
-          .describe("Public regtest relay websocket URLs to join (passed as --relays)."),
+          .describe(
+            "Public regtest relay websocket URLs to join (passed as --relays)."
+          ),
         addnode: z
           .string()
           .max(253)
           .optional()
-          .describe("bitcoind regtest addnode peer endpoint host[:port] (passed as --addnode)."),
+          .describe(
+            "bitcoind regtest addnode peer endpoint host[:port] (passed as --addnode)."
+          ),
         gateway: z
           .string()
           .max(2_048)
           .optional()
           .describe("Public regtest gateway base URL (passed as --gateway)."),
+        stateDir: z
+          .string()
+          .max(1_024)
+          .optional()
+          .describe(
+            "Absolute private state directory owned by this node (passed as --state-dir)."
+          ),
         immortalDir: z
           .string()
           .max(1_024)
           .optional()
-          .describe("Immortal checkout override (defaults to IMMORTAL_DIR or ~/work/immortal)."),
+          .describe(
+            "Immortal checkout override (defaults to IMMORTAL_DIR or ~/work/immortal)."
+          ),
       },
       annotations: { ...EFFECTFUL, title: "Spin up a local regtest node" },
     },
@@ -215,9 +236,14 @@ export function buildServer(): McpServer {
           .string()
           .max(1_024)
           .optional()
-          .describe("Immortal checkout override (defaults to IMMORTAL_DIR or ~/work/immortal)."),
+          .describe(
+            "Immortal checkout override (defaults to IMMORTAL_DIR or ~/work/immortal)."
+          ),
       },
-      annotations: { ...EFFECTFUL, title: "Publish the local provider to the network" },
+      annotations: {
+        ...EFFECTFUL,
+        title: "Publish the local provider to the network",
+      },
     },
     async (args) => guarded(() => joinNetwork(args))
   )
@@ -238,12 +264,16 @@ export function buildServer(): McpServer {
         gateway: z
           .string()
           .max(2_048)
-          .describe("Gateway base URL from the manifest (network_status → manifest.gatewayBaseUrl)."),
+          .describe(
+            "Gateway base URL from the manifest (network_status → manifest.gatewayBaseUrl)."
+          ),
         address: z
           .string()
           .min(10)
           .max(96)
-          .describe("Regtest bech32 address; MUST start with bcrt1. Mainnet identifiers fail validation."),
+          .describe(
+            "Regtest bech32 address; MUST start with bcrt1. Mainnet identifiers fail validation."
+          ),
         amountSat: z
           .number()
           .int()
@@ -251,7 +281,10 @@ export function buildServer(): McpServer {
           .max(10_000_000)
           .describe("Amount in regtest sats (1..10,000,000)."),
       },
-      annotations: { ...EFFECTFUL, title: "Fund a regtest address from the gateway faucet" },
+      annotations: {
+        ...EFFECTFUL,
+        title: "Fund a regtest address from the gateway faucet",
+      },
     },
     async (args) => guarded(() => faucetFund(args))
   )
@@ -270,11 +303,15 @@ export function buildServer(): McpServer {
         pubkey: z
           .string()
           .regex(/^[0-9a-f]{64}$/)
-          .describe("Provider pubkey (64-char lowercase hex) from the join kit."),
+          .describe(
+            "Provider pubkey (64-char lowercase hex) from the join kit."
+          ),
         offeringCoordinate: z
           .string()
           .max(200)
-          .describe("Offering coordinate `39601:<pubkey>:<d>` bound to the provider pubkey."),
+          .describe(
+            "Offering coordinate `39601:<pubkey>:<d>` bound to the provider pubkey."
+          ),
         nip11Url: z
           .string()
           .max(2_048)
@@ -282,7 +319,9 @@ export function buildServer(): McpServer {
         healthJson: z
           .string()
           .max(16_384)
-          .describe("The join kit's health summary as a JSON string (≤16 KiB)."),
+          .describe(
+            "The join kit's health summary as a JSON string (≤16 KiB)."
+          ),
       },
       annotations: { ...EFFECTFUL, title: "Prepare a listing (pin) request" },
     },

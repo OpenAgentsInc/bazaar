@@ -340,7 +340,11 @@ export class ImmortalRelayTransport {
     const privateId = `bazaar-private-${suffix}`
     this.subscriptions.set(publicId, { phase: "snapshot", events: [] })
     this.subscriptions.set(privateId, { phase: "snapshot", events: [] })
-    this.send(["REQ", publicId, { kinds: [39_600, 39_601], limit: 256 }])
+    this.send([
+      "REQ",
+      publicId,
+      { kinds: [39_600, 39_601, 39_603], limit: 512 },
+    ])
     this.send([
       "REQ",
       privateId,

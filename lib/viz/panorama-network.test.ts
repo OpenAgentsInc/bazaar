@@ -4,6 +4,7 @@ import test from "node:test"
 import type { Event } from "@openagentsinc/nip-mkt"
 
 import {
+  aggregatePublicReceipts,
   buildPanoramaNetwork,
   normalizeRelayUrl,
   type PanoramaManifestInput,
@@ -103,15 +104,26 @@ test("pinned manifest folds to pinned relays and providers", () => {
     },
     heads: [
       head(profile(providerA, 10, "active"), RELAY_A),
-      head(offering(providerA, "no-spend-default", 11, "active", ["40"]), RELAY_A),
+      head(
+        offering(providerA, "no-spend-default", 11, "active", ["40"]),
+        RELAY_A
+      ),
       head(profile(providerB, 10, "active"), RELAY_B),
-      head(offering(providerB, "no-spend-alternate", 11, "active", ["55"]), RELAY_B),
+      head(
+        offering(providerB, "no-spend-alternate", 11, "active", ["55"]),
+        RELAY_B
+      ),
     ],
     clientCount: 1,
   })
 
   assert.deepEqual(
-    network.relays.map((relay) => [relay.id, relay.label, relay.state, relay.trust]),
+    network.relays.map((relay) => [
+      relay.id,
+      relay.label,
+      relay.state,
+      relay.trust,
+    ]),
     [
       [RELAY_A, "relay-a", "ready", "pinned"],
       [RELAY_B, "relay-b", "ready", "pinned"],
@@ -214,7 +226,10 @@ test("replaceable heads: newest created_at wins, ties break to lower id", () => 
     providerA,
     20,
     39_600,
-    [["d", "main"], ["status", "active"]],
+    [
+      ["d", "main"],
+      ["status", "active"],
+    ],
     "{}",
     "0".repeat(64)
   )
@@ -239,7 +254,10 @@ test("discovered tier requires an active profile and a valid offering", () => {
       head(offering(providerA, "no-spend-default", 11, "active"), RELAY_A),
       // Fully valid discovered provider on a connected relay.
       head(profile(discovered1, 12, "active", [RELAY_NEW]), RELAY_A),
-      head(offering(discovered1, "join-offer", 13, "active", ["75", "60"]), RELAY_A),
+      head(
+        offering(discovered1, "join-offer", 13, "active", ["75", "60"]),
+        RELAY_A
+      ),
       // Profile without any offering: not discovered.
       head(profile(discovered2, 12, "active"), RELAY_B),
       // Offering with malformed content: excluded, fail closed.
@@ -305,6 +323,47 @@ test("receipt aggregates roll up into provider rows and network stats", () => {
   assert.equal(network.providers[1]!.volumeSat24h, 4_750_000)
   // Activity derives from observed swap rate, floored and capped.
   assert.equal(network.activity, Math.min(1, 0.1 + 33 / 400))
+})
+
+test("public receipts deduplicate and keep redacted totals unknown", () => {
+  const completed = event(
+    providerA,
+    100_000,
+    39_603,
+    [
+      ["d", "receipt-one"],
+      ["profile", "mkt-swp", "1"],
+      ["outcome", "completed"],
+      ["x", "aa".repeat(32)],
+      ["role", "provider"],
+    ],
+    "",
+    "ab".repeat(32)
+  )
+  const refunded = event(
+    providerA,
+    100_001,
+    39_603,
+    [
+      ["d", "receipt-two"],
+      ["profile", "mkt-swp", "1"],
+      ["outcome", "refunded"],
+      ["x", "bb".repeat(32)],
+      ["role", "provider"],
+    ],
+    "",
+    "cd".repeat(32)
+  )
+  assert.deepEqual(
+    aggregatePublicReceipts([completed, completed, refunded], 100_100),
+    {
+      [providerA]: {
+        swaps24h: 1,
+        volumeSat24h: null,
+        feeSat24h: null,
+      },
+    }
+  )
 })
 
 test("activity saturates at one and needs a ready relay", () => {

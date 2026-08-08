@@ -21,6 +21,7 @@ import * as React from "react"
 import type { PanoramaNetwork } from "@/components/viz/immortal/network-panorama"
 import type { PublicRegtestConfigResult } from "@/lib/immortal/public-config"
 import type { RelayConnectionState } from "@/lib/immortal/transport"
+import { usePanoramaLive } from "@/hooks/use-panorama-live"
 import {
   buildPanoramaNetwork,
   normalizeRelayUrl,
@@ -54,8 +55,10 @@ export type PanoramaNetworkView =
 
 export function usePanoramaNetwork(
   publicConfig: PublicRegtestConfigResult,
-  live: PanoramaLiveInputs = {}
+  suppliedLive?: PanoramaLiveInputs
 ): PanoramaNetworkView {
+  const observedLive = usePanoramaLive(publicConfig, suppliedLive === undefined)
+  const live = suppliedLive ?? observedLive
   const relayUrls = React.useMemo(
     () =>
       publicConfig.state === "ready"
@@ -139,6 +142,11 @@ async function probeNip11(
         supportedNips: Array.isArray(document.supported_nips)
           ? document.supported_nips.filter(
               (nip): nip is number => typeof nip === "number"
+            )
+          : undefined,
+        supportedExtensions: Array.isArray(document.supported_extensions)
+          ? document.supported_extensions.filter(
+              (extension): extension is string => typeof extension === "string"
             )
           : undefined,
       },

@@ -18,6 +18,7 @@ const DNS_HOST =
 
 interface CachedManifest {
   readonly config: PublicRegtestConfig
+  readonly raw: string
   readonly trustFingerprint: string
   readonly loadedAt: number
   readonly refreshAt: number
@@ -86,7 +87,13 @@ export async function readPublicRegtestConfig(
       config.expiresAt,
       now + config.refreshAfterSeconds
     )
-    cached = { config, trustFingerprint: fingerprint, loadedAt: now, refreshAt }
+    cached = {
+      config,
+      raw,
+      trustFingerprint: fingerprint,
+      loadedAt: now,
+      refreshAt,
+    }
     return {
       state: "ready",
       config,
@@ -109,6 +116,13 @@ export async function readPublicRegtestConfig(
     }
     return unavailable(cause, "public_manifest_unavailable")
   }
+}
+
+export async function readPublicRegtestEnvelope(
+  now = Math.floor(Date.now() / 1_000)
+): Promise<string | null> {
+  const result = await readPublicRegtestConfig(now)
+  return result.state === "ready" ? (cached?.raw ?? null) : null
 }
 
 export function resetPublicManifestCacheForTests(): void {

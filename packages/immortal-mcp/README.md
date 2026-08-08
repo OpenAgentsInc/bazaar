@@ -30,39 +30,39 @@ Stated in every tool description and enforced in argument validation:
 
 Read-only (`readOnlyHint: true` — hosts may default-allow):
 
-| Tool | Does |
-| --- | --- |
+| Tool             | Does                                                                                                                                                                                                                                                                                                                                          |
+| ---------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `network_status` | Fetches + structure-checks the manifest envelope (reports signing pubkey and canonical sha256; see verification depth below), fetches each relay's NIP-11, takes one bounded EOSE-terminated 39600/39601 snapshot per relay, and returns PanoramaNetwork-shaped JSON with `pinned` vs `discovered` providers. Stats are `null` where unknown. |
-| `list_offerings` | Bounded 39601 head snapshot per given relay → normalized offerings: pairs, min/max, fee bps, status, provider pubkey. |
-| `get_quotes` | **v1 scope cut — honest stub.** Always returns a typed `not_implemented` error (see below). Quotes are never faked. |
-| `node_health` | Local join-kit status: `docker compose ps --format json` in the join dir (`IMMORTAL_JOIN_DIR`, default `~/work/immortal/deploy/join`) + the kit's health/ownership JSON, or a clear `join_kit_not_found`. |
+| `list_offerings` | Bounded 39601 head snapshot per given relay → normalized offerings: pairs, min/max, fee bps, status, provider pubkey.                                                                                                                                                                                                                         |
+| `get_quotes`     | Loads the pinned Immortal requester WASM, discovers two eligible providers, opens authenticated relay lanes, sends separate NIP-59 RFQs, validates returned signed Quotes through the requester engine, and selects deterministically. The requester identity is ephemeral and the tool cannot order or spend.                                |
+| `node_health`    | Local join-kit status: `docker compose ps --format json` in the join dir (`IMMORTAL_JOIN_DIR`, default `~/work/immortal/deploy/join`) + the kit's health/ownership JSON, or a clear `join_kit_not_found`.                                                                                                                                     |
 
 Effectful (`readOnlyHint: false`, `destructiveHint: false` — descriptions
 instruct hosts to require approval):
 
-| Tool | Does |
-| --- | --- |
-| `spin_up_node` | Runs the join kit `scripts/join-regtest.sh provider\|relay --network public-regtest` in the immortal checkout (`IMMORTAL_DIR`, default `~/work/immortal`). Streams progress notifications, returns the last 200 output lines, 15-minute bound. Typed `join_script_not_found` until immortal#45 lands locally. |
-| `join_network` | Publishing 39600/39601 happens inside the join script's provider start. If the installed script exposes a discrete `publish` entrypoint this runs it; otherwise it returns typed guidance pointing at `spin_up_node` (it never invents a publish path). |
-| `faucet_fund` | POSTs the gateway faucet capability (`<gateway>/v1/public-regtest/faucet`, request schema `openagents.immortal.public-regtest-faucet-request.v1`) for a `bcrt1` address (validated client-side first), then polls the status URL until `paid` or a 60 s bound. |
-| `request_listing` | Constructs and returns the prefilled GitHub new-issue URL for the `OpenAgentsInc/immortal` pin request. Does **not** open a browser or create the issue. |
+| Tool              | Does                                                                                                                                                                                                                                                                                                                |
+| ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `spin_up_node`    | Runs the join kit `scripts/join-regtest.sh provider\|relay` in the immortal checkout (`IMMORTAL_DIR`, default `~/work/immortal`). Optional relay, gateway, peer, and private state-directory arguments pass through to the kit. Streams progress notifications, returns the last 200 output lines, 15-minute bound. |
+| `join_network`    | Publishing 39600/39601 happens inside the join script's provider start. If the installed script exposes a discrete `publish` entrypoint this runs it; otherwise it returns typed guidance pointing at `spin_up_node` (it never invents a publish path).                                                             |
+| `faucet_fund`     | POSTs the gateway faucet capability (`<gateway>/v1/public-regtest/faucet`, request schema `openagents.immortal.public-regtest-faucet-request.v1`) for a `bcrt1` address (validated client-side first), then polls the status URL until `paid` or a 60 s bound.                                                      |
+| `request_listing` | Constructs and returns the prefilled GitHub new-issue URL for the `OpenAgentsInc/immortal` pin request. Does **not** open a browser or create the issue.                                                                                                                                                            |
 
 ## Running
 
 ```sh
 # from the bazaar repo (development)
 pnpm --filter @openagentsinc/immortal-mcp dev      # npx tsx src/index.ts
-pnpm --filter @openagentsinc/immortal-mcp build    # tsc -> dist/
+pnpm --filter @openagentsinc/immortal-mcp build    # bundled executable + pinned WASM
 node packages/immortal-mcp/dist/index.js           # built stdio server
 ```
 
 Environment:
 
-| Variable | Meaning |
-| --- | --- |
+| Variable                | Meaning                                                                                     |
+| ----------------------- | ------------------------------------------------------------------------------------------- |
 | `IMMORTAL_MANIFEST_URL` | Default manifest envelope URL for `network_status` (`<origin>/bazaar-public-regtest.json`). |
-| `IMMORTAL_DIR` | Immortal checkout for `spin_up_node`/`join_network` (default `~/work/immortal`). |
-| `IMMORTAL_JOIN_DIR` | Join-kit state dir for `node_health` (default `~/work/immortal/deploy/join`). |
+| `IMMORTAL_DIR`          | Immortal checkout for `spin_up_node`/`join_network` (default `~/work/immortal`).            |
+| `IMMORTAL_JOIN_DIR`     | Join-kit state dir for `node_health` (default `~/work/immortal/deploy/join`).               |
 
 ## Client wiring
 
@@ -118,16 +118,14 @@ trust-root-pinned verification remains with the browser runtime
 
 ## Scope cuts (v1)
 
-- **`get_quotes` is a stub.** The no-spend RFQ contract (competing signed
-  quotes + selection policy) requires the verified browser requester engine —
-  NIP-42 authed lanes, NIP-59 gift-wrap transport, and the signed request
-  contract. Embedding that in a standalone Node server would mean
-  reimplementing protocol authority outside the verified artifact, so the
-  tool fails closed with `not_implemented` instead of faking quotes.
+- **`get_quotes` is no-spend only.** It creates an ephemeral requester key,
+  returns public quote terms, and then discards the key. It never constructs an
+  Order, exposes a funding request, or retains a resumable requester session.
 - **Trust-root pinning** in `network_status` is reported, not enforced (see
   above).
-- **39603 receipt aggregation** (swaps/volume/fee stats) is not implemented;
-  stats are returned as `null`, never fabricated zeros.
+- **Public 39603 receipts redact amounts and fees.** The map aggregates unique
+  completed swaps, while volume and fee totals stay `null`, never fabricated
+  zeros.
 
 ## Conformance
 
@@ -137,6 +135,6 @@ pnpm --filter @openagentsinc/immortal-mcp conformance
 
 Spawns the server over stdio, performs `initialize` + `tools/list`, asserts
 the eight v1 tools with JSON schemas and annotations (read-only vs effectful),
-calls `request_listing` (pure) and asserts the GitHub URL shape, and asserts
-the typed `not_implemented` behavior of `get_quotes` and the mainnet-address
-rejection of `faucet_fund`.
+calls `request_listing` (pure) and asserts the GitHub URL shape, proves
+`get_quotes` refuses to open a network path without an explicit signed
+manifest, and asserts the mainnet-address rejection of `faucet_fund`.

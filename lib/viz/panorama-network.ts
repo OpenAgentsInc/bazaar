@@ -72,8 +72,8 @@ export interface PanoramaProviderHead {
 /** Client-side aggregation of kind 39603 public market receipts. */
 export interface PanoramaReceiptAggregate {
   readonly swaps24h: number
-  readonly volumeSat24h: number
-  readonly feeSat24h: number
+  readonly volumeSat24h: number | null
+  readonly feeSat24h: number | null
 }
 
 export interface PanoramaNetworkInputs {
@@ -123,8 +123,7 @@ export function buildPanoramaNetwork(
     if (event.kind !== PROFILE_KIND && event.kind !== OFFERING_KIND) continue
     const distinct = tagValue(event.tags, "d")
     if (!distinct) continue
-    const seen =
-      seenRelaysByPubkey.get(event.pubkey) ?? new Set<string>()
+    const seen = seenRelaysByPubkey.get(event.pubkey) ?? new Set<string>()
     seen.add(normalizeRelayUrl(head.relayUrl))
     seenRelaysByPubkey.set(event.pubkey, seen)
     const key = `${event.kind}:${event.pubkey}:${distinct}`
@@ -244,7 +243,7 @@ export function buildPanoramaNetwork(
         relayIds: relayIdsFor(provider.pubkey, pinnedRelayUrls),
         feeBps: pinnedOfferingFee(provider, folded) ?? 0,
         swaps24h: aggregate?.swaps24h ?? 0,
-        volumeSat24h: aggregate?.volumeSat24h ?? 0,
+        volumeSat24h: aggregate?.volumeSat24h ?? null,
       }
     }),
     ...discoveredProviderKeys.map((pubkey): PanoramaProvider => {
@@ -257,19 +256,31 @@ export function buildPanoramaNetwork(
         relayIds: relayIdsFor(pubkey, []),
         feeBps: offeringFeeByPubkey.get(pubkey) ?? 0,
         swaps24h: aggregate?.swaps24h ?? 0,
-        volumeSat24h: aggregate?.volumeSat24h ?? 0,
+        volumeSat24h: aggregate?.volumeSat24h ?? null,
       }
     }),
   ]
 
   const stats = providers.reduce(
-    (sum, provider) => ({
-      swaps24h: sum.swaps24h + provider.swaps24h,
-      volumeSat24h: sum.volumeSat24h + provider.volumeSat24h,
-      operatorFeeSat24h:
-        sum.operatorFeeSat24h + (aggregates[provider.id]?.feeSat24h ?? 0),
-    }),
-    { swaps24h: 0, volumeSat24h: 0, operatorFeeSat24h: 0 }
+    (sum, provider) => {
+      const aggregate = aggregates[provider.id]
+      return {
+        swaps24h: sum.swaps24h + provider.swaps24h,
+        volumeSat24h:
+          sum.volumeSat24h === null || provider.volumeSat24h === null
+            ? null
+            : sum.volumeSat24h + provider.volumeSat24h,
+        operatorFeeSat24h:
+          sum.operatorFeeSat24h === null || aggregate?.feeSat24h == null
+            ? null
+            : sum.operatorFeeSat24h + aggregate.feeSat24h,
+      }
+    },
+    {
+      swaps24h: 0,
+      volumeSat24h: providers.length === 0 ? 0 : (0 as number | null),
+      operatorFeeSat24h: providers.length === 0 ? 0 : (0 as number | null),
+    }
   )
 
   const readyRelays = relays.filter(
@@ -278,10 +289,7 @@ export function buildPanoramaNetwork(
   const activity =
     readyRelays === 0
       ? 0
-      : Math.min(
-          1,
-          ACTIVITY_FLOOR + stats.swaps24h / ACTIVITY_SWAPS_FULL_SCALE
-        )
+      : Math.min(1, ACTIVITY_FLOOR + stats.swaps24h / ACTIVITY_SWAPS_FULL_SCALE)
 
   return {
     name: inputs.name ?? "public regtest",
@@ -291,6 +299,40 @@ export function buildPanoramaNetwork(
     stats,
     activity,
   }
+}
+
+/**
+ * Aggregate unique, successfully validated public Market Receipts over a
+ * bounded 24-hour window. NIP-MKT receipts deliberately redact amount and
+ * fee by default, so those totals remain null instead of becoming fake zeroes.
+ */
+export function aggregatePublicReceipts(
+  events: readonly Event[],
+  nowSeconds = Math.floor(Date.now() / 1_000)
+): Readonly<Record<string, PanoramaReceiptAggregate>> {
+  const earliest = nowSeconds - 86_400
+  const seen = new Set<string>()
+  const counts = new Map<string, number>()
+  for (const event of events) {
+    if (
+      event.kind !== 39_603 ||
+      event.created_at < earliest ||
+      event.created_at > nowSeconds + 900 ||
+      seen.has(event.id) ||
+      tagValue(event.tags, "outcome") !== "completed" ||
+      tagValue(event.tags, "role") !== "provider"
+    ) {
+      continue
+    }
+    seen.add(event.id)
+    counts.set(event.pubkey, (counts.get(event.pubkey) ?? 0) + 1)
+  }
+  return Object.fromEntries(
+    [...counts.entries()].map(([pubkey, swaps24h]) => [
+      pubkey,
+      { swaps24h, volumeSat24h: null, feeSat24h: null },
+    ])
+  )
 }
 
 // --- helpers -----------------------------------------------------------------
@@ -398,11 +440,7 @@ function minimumOfferingFeeBps(event: Event): number | null {
   if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed))
     return null
   const profile = (parsed as Record<string, unknown>).mkt_swp
-  if (
-    profile === null ||
-    typeof profile !== "object" ||
-    Array.isArray(profile)
-  )
+  if (profile === null || typeof profile !== "object" || Array.isArray(profile))
     return null
   const sides = (profile as Record<string, unknown>).sides
   if (!Array.isArray(sides)) return null

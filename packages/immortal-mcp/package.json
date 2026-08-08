@@ -10,25 +10,28 @@
   },
   "main": "dist/index.js",
   "files": [
+    "assets",
     "dist",
     "src",
     "README.md"
   ],
   "scripts": {
     "dev": "tsx src/index.ts",
-    "build": "tsc -p tsconfig.build.json",
+    "build": "esbuild src/index.ts --bundle --format=esm --platform=node --target=node20 --outfile=dist/index.js --packages=external",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "conformance": "tsx scripts/conformance.ts"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.30.0",
     "@openagentsinc/nip-mkt": "workspace:*",
+    "effect": "4.0.0-beta.94",
     "ws": "8.21.2",
     "zod": "^3.25.76"
   },
   "devDependencies": {
     "@types/node": "^20",
     "@types/ws": "8.18.1",
+    "esbuild": "0.28.1",
     "tsx": "4.23.10",
     "typescript": "^5"
   }

@@ -26,6 +26,7 @@ import {
 } from "./public-csp"
 import {
   readPublicRegtestConfig,
+  readPublicRegtestEnvelope,
   resetPublicManifestCacheForTests,
 } from "./public-manifest"
 import { publicRequesterRuntimeConfig } from "./public-runtime"
@@ -402,6 +403,7 @@ test("deployment-only environment and HTTPS sources refresh with a bounded last-
     delete process.env.BAZAAR_PUBLIC_REGTEST_MANIFEST_URL
     resetPublicManifestCacheForTests()
     assert.equal((await readPublicRegtestConfig(NOW + 1)).state, "ready")
+    assert.equal(await readPublicRegtestEnvelope(NOW + 1), raw)
 
     delete process.env.BAZAAR_PUBLIC_REGTEST_MANIFEST
     process.env.BAZAAR_PUBLIC_REGTEST_MANIFEST_URL =

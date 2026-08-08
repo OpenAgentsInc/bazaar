@@ -1,7 +1,7 @@
 // MCP conformance check: spawns the server over stdio, performs initialize +
 // tools/list, asserts the eight v1 tools with schemas and annotations, calls
 // request_listing (pure — no network) and asserts the URL shape, and asserts
-// the typed failure modes of get_quotes and the faucet mainnet guard.
+// the no-network boundary of get_quotes and the faucet mainnet guard.
 
 import { createRequire } from "node:module"
 import { dirname, join } from "node:path"
@@ -50,7 +50,10 @@ async function main(): Promise<void> {
     args: [require.resolve("tsx/cli"), join(here, "..", "src", "index.ts")],
     stderr: "ignore",
   })
-  const client = new Client({ name: "immortal-mcp-conformance", version: "0.0.1" })
+  const client = new Client({
+    name: "immortal-mcp-conformance",
+    version: "0.0.1",
+  })
   await client.connect(transport)
 
   const serverVersion = client.getServerVersion()
@@ -126,15 +129,16 @@ async function main(): Promise<void> {
     check("request_listing: parseable URL payload", false, String(cause))
   }
 
-  // get_quotes is an honest v1 stub — a typed not_implemented error.
+  // The live path requires an explicitly supplied signed manifest. Without one,
+  // it must fail before opening a socket or creating an RFQ.
   const quotes = await client.callTool({
     name: "get_quotes",
     arguments: { direction: "LN->BTC", amountSat: 100000 },
   })
-  check("get_quotes: isError true (v1 scope cut)", quotes.isError === true)
+  check("get_quotes: missing manifest is an error", quotes.isError === true)
   check(
-    "get_quotes: typed not_implemented",
-    firstText(quotes).includes('"not_implemented"')
+    "get_quotes: typed manifest boundary",
+    firstText(quotes).includes('"manifest_url_required"')
   )
 
   // Mainnet identifiers must fail validation before any network effect.
