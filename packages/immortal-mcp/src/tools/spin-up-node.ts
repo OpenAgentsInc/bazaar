@@ -26,6 +26,10 @@ export function defaultImmortalDir(): string {
   return process.env.IMMORTAL_DIR ?? join(homedir(), "work", "immortal")
 }
 
+export function defaultStateDir(role: "provider" | "relay"): string {
+  return join(homedir(), ".local", "share", "immortal-public-regtest", role)
+}
+
 export async function spinUpNode(
   args: SpinUpNodeArgs,
   onLine?: (line: string) => void
@@ -58,7 +62,7 @@ export async function spinUpNode(
   }
   if (args.addnode) scriptArgs.push("--addnode", args.addnode)
   if (args.gateway) scriptArgs.push("--gateway", args.gateway)
-  if (args.stateDir) scriptArgs.push("--state-dir", args.stateDir)
+  scriptArgs.push("--state-dir", args.stateDir ?? defaultStateDir(args.role))
 
   const lines: string[] = []
   const pushLine = (line: string) => {

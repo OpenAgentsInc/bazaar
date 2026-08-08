@@ -25,7 +25,7 @@ const HEALTH_FILE_CANDIDATES = [
 export function defaultJoinDir(): string {
   return (
     process.env.IMMORTAL_JOIN_DIR ??
-    join(homedir(), "work", "immortal", "deploy", "join")
+    join(homedir(), ".local", "share", "immortal-public-regtest", "provider")
   )
 }
 
@@ -43,14 +43,43 @@ export async function nodeHealth(args: NodeHealthArgs): Promise<ToolResult> {
     )
   }
 
-  let compose:
-    | { ok: true; services: unknown[] }
-    | { ok: false; error: string }
+  let compose: { ok: true; services: unknown[] } | { ok: false; error: string }
   try {
+    const ownership = JSON.parse(
+      await readFile(join(joinDir, "ownership.json"), "utf8")
+    ) as Record<string, unknown>
+    const repository = ownership.repository
+    const project = ownership.compose_project
+    const mode = ownership.mode
+    if (
+      ownership.schema !== "openagents.immortal.join-owner.v1" ||
+      typeof repository !== "string" ||
+      !repository.startsWith("/") ||
+      typeof project !== "string" ||
+      !/^immortal-join-[a-z0-9]{1,48}$/.test(project) ||
+      (mode !== "provider" && mode !== "relay")
+    ) {
+      throw new Error("ownership.json is invalid")
+    }
     const { stdout } = await execFileAsync(
       "docker",
-      ["compose", "ps", "--format", "json"],
-      { cwd: joinDir, timeout: 15_000, maxBuffer: 1024 * 1024 }
+      [
+        "compose",
+        "--project-directory",
+        repository,
+        "--project-name",
+        project,
+        "--env-file",
+        join(joinDir, "compose.env"),
+        "--profile",
+        mode,
+        "-f",
+        join(repository, "deploy", "join", "compose.yaml"),
+        "ps",
+        "--format",
+        "json",
+      ],
+      { cwd: repository, timeout: 15_000, maxBuffer: 1024 * 1024 }
     )
     // `docker compose ps --format json` emits either a JSON array or one
     // JSON object per line depending on the compose version.
@@ -95,7 +124,11 @@ export async function nodeHealth(args: NodeHealthArgs): Promise<ToolResult> {
     return toolError(
       "node_health_unavailable",
       `docker compose failed in ${joinDir} and no health/ownership JSON was found.`,
-      { joinDir, composeError: compose.error, checkedFiles: HEALTH_FILE_CANDIDATES }
+      {
+        joinDir,
+        composeError: compose.error,
+        checkedFiles: HEALTH_FILE_CANDIDATES,
+      }
     )
   }
 

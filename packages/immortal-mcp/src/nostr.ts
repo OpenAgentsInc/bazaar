@@ -4,7 +4,12 @@
 
 import WebSocket from "ws"
 
-import { verifyEvent, type Event } from "@openagentsinc/nip-mkt"
+import {
+  finalizeEvent,
+  generateSecretKey,
+  verifyEvent,
+  type Event,
+} from "@openagentsinc/nip-mkt"
 
 export interface Nip11Info {
   readonly reachable: boolean
@@ -80,6 +85,10 @@ export function fetchRelaySnapshot(
     let droppedInvalidSignatures = 0
     let closedReason: string | undefined
     let settled = false
+    let requested = false
+    let authEventId: string | undefined
+    let openRelayTimer: ReturnType<typeof setTimeout> | undefined
+    const privateKey = generateSecretKey()
     const subscription = `immortal-mcp-${Math.random().toString(36).slice(2, 10)}`
 
     let socket: WebSocket
@@ -101,6 +110,7 @@ export function fetchRelaySnapshot(
       if (settled) return
       settled = true
       clearTimeout(timer)
+      if (openRelayTimer) clearTimeout(openRelayTimer)
       try {
         if (socket.readyState === WebSocket.OPEN) {
           socket.send(JSON.stringify(["CLOSE", subscription]))
@@ -120,9 +130,14 @@ export function fetchRelaySnapshot(
       })
     }
 
-    const timer = setTimeout(() => finish(events.length > 0, "timeout"), timeoutMs)
+    const timer = setTimeout(
+      () => finish(events.length > 0, "timeout"),
+      timeoutMs
+    )
 
-    socket.on("open", () => {
+    const requestSnapshot = () => {
+      if (requested || socket.readyState !== WebSocket.OPEN) return
+      requested = true
       socket.send(
         JSON.stringify([
           "REQ",
@@ -130,6 +145,13 @@ export function fetchRelaySnapshot(
           { kinds: [...kinds], limit: MAXIMUM_EVENTS_PER_RELAY },
         ])
       )
+    }
+
+    socket.on("open", () => {
+      // NIP-42 relays send AUTH immediately. Preserve compatibility with an
+      // open relay by issuing the read-only request after a short grace
+      // period when no challenge arrives.
+      openRelayTimer = setTimeout(requestSnapshot, 250)
     })
     socket.on("message", (data) => {
       let message: unknown
@@ -140,7 +162,25 @@ export function fetchRelaySnapshot(
       }
       if (!Array.isArray(message)) return
       const [verb, ...rest] = message
-      if (verb === "EVENT" && rest[0] === subscription) {
+      if (verb === "AUTH" && typeof rest[0] === "string") {
+        if (openRelayTimer) clearTimeout(openRelayTimer)
+        const auth = finalizeEvent(
+          {
+            kind: 22_242,
+            created_at: Math.floor(Date.now() / 1_000),
+            tags: [
+              ["relay", url],
+              ["challenge", rest[0]],
+            ],
+            content: "",
+          },
+          privateKey
+        )
+        authEventId = auth.id
+        socket.send(JSON.stringify(["AUTH", auth]))
+      } else if (verb === "OK" && rest[0] === authEventId && rest[1] === true) {
+        requestSnapshot()
+      } else if (verb === "EVENT" && rest[0] === subscription) {
         const event = rest[1] as Event
         if (
           events.length < MAXIMUM_EVENTS_PER_RELAY &&
@@ -157,7 +197,8 @@ export function fetchRelaySnapshot(
         finish(true)
       } else if (verb === "CLOSED" && rest[0] === subscription) {
         closedReason = typeof rest[1] === "string" ? rest[1] : "closed"
-        finish(true)
+        if (closedReason.startsWith("auth-required")) requested = false
+        else finish(true)
       } else if (verb === "NOTICE") {
         if (notices.length < 8) notices.push(String(rest[0] ?? ""))
       }

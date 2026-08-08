@@ -73,10 +73,16 @@ export async function networkStatus(
     offeringsByProvider.set(offering.providerPubkey, list)
   }
 
+  const profilePubkeys = new Set(profiles.map((profile) => profile.pubkey))
+  const discoveredPubkeys = offerings
+    .filter(
+      (offering) =>
+        !offering.parseError && profilePubkeys.has(offering.providerPubkey)
+    )
+    .map((offering) => offering.providerPubkey)
   const providerPubkeys = new Set<string>([
-    ...profiles.map((profile) => profile.pubkey),
-    ...offerings.map((offering) => offering.providerPubkey),
     ...pinnedPubkeys,
+    ...discoveredPubkeys,
   ])
 
   const relayIdsFor = (pubkey: string): string[] =>

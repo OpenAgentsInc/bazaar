@@ -262,6 +262,9 @@ var MAXIMUM_LINES = 200;
 function defaultImmortalDir() {
   return process.env.IMMORTAL_DIR ?? join(homedir(), "work", "immortal");
 }
+function defaultStateDir(role) {
+  return join(homedir(), ".local", "share", "immortal-public-regtest", role);
+}
 async function spinUpNode(args, onLine) {
   if (args.relays)
     for (const relay of args.relays) assertWsUrl(relay, "relays[]");
@@ -288,7 +291,7 @@ async function spinUpNode(args, onLine) {
   }
   if (args.addnode) scriptArgs.push("--addnode", args.addnode);
   if (args.gateway) scriptArgs.push("--gateway", args.gateway);
-  if (args.stateDir) scriptArgs.push("--state-dir", args.stateDir);
+  scriptArgs.push("--state-dir", args.stateDir ?? defaultStateDir(args.role));
   const lines = [];
   const pushLine = (line) => {
     if (line.length === 0) return;
@@ -444,7 +447,11 @@ async function joinNetwork(args) {
 
 // src/nostr.ts
 import WebSocket from "ws";
-import { verifyEvent } from "@openagentsinc/nip-mkt";
+import {
+  finalizeEvent,
+  generateSecretKey,
+  verifyEvent
+} from "@openagentsinc/nip-mkt";
 async function fetchNip11(websocketUrl) {
   let httpUrl;
   try {
@@ -487,6 +494,10 @@ function fetchRelaySnapshot(url, kinds, timeoutMs = 1e4) {
     let droppedInvalidSignatures = 0;
     let closedReason;
     let settled = false;
+    let requested = false;
+    let authEventId;
+    let openRelayTimer;
+    const privateKey = generateSecretKey();
     const subscription = `immortal-mcp-${Math.random().toString(36).slice(2, 10)}`;
     let socket;
     try {
@@ -506,6 +517,7 @@ function fetchRelaySnapshot(url, kinds, timeoutMs = 1e4) {
       if (settled) return;
       settled = true;
       clearTimeout(timer);
+      if (openRelayTimer) clearTimeout(openRelayTimer);
       try {
         if (socket.readyState === WebSocket.OPEN) {
           socket.send(JSON.stringify(["CLOSE", subscription]));
@@ -523,8 +535,13 @@ function fetchRelaySnapshot(url, kinds, timeoutMs = 1e4) {
         error
       });
     };
-    const timer = setTimeout(() => finish(events.length > 0, "timeout"), timeoutMs);
-    socket.on("open", () => {
+    const timer = setTimeout(
+      () => finish(events.length > 0, "timeout"),
+      timeoutMs
+    );
+    const requestSnapshot = () => {
+      if (requested || socket.readyState !== WebSocket.OPEN) return;
+      requested = true;
       socket.send(
         JSON.stringify([
           "REQ",
@@ -532,6 +549,9 @@ function fetchRelaySnapshot(url, kinds, timeoutMs = 1e4) {
           { kinds: [...kinds], limit: MAXIMUM_EVENTS_PER_RELAY }
         ])
       );
+    };
+    socket.on("open", () => {
+      openRelayTimer = setTimeout(requestSnapshot, 250);
     });
     socket.on("message", (data) => {
       let message;
@@ -542,7 +562,25 @@ function fetchRelaySnapshot(url, kinds, timeoutMs = 1e4) {
       }
       if (!Array.isArray(message)) return;
       const [verb, ...rest] = message;
-      if (verb === "EVENT" && rest[0] === subscription) {
+      if (verb === "AUTH" && typeof rest[0] === "string") {
+        if (openRelayTimer) clearTimeout(openRelayTimer);
+        const auth = finalizeEvent(
+          {
+            kind: 22242,
+            created_at: Math.floor(Date.now() / 1e3),
+            tags: [
+              ["relay", url],
+              ["challenge", rest[0]]
+            ],
+            content: ""
+          },
+          privateKey
+        );
+        authEventId = auth.id;
+        socket.send(JSON.stringify(["AUTH", auth]));
+      } else if (verb === "OK" && rest[0] === authEventId && rest[1] === true) {
+        requestSnapshot();
+      } else if (verb === "EVENT" && rest[0] === subscription) {
         const event = rest[1];
         if (events.length < MAXIMUM_EVENTS_PER_RELAY && kinds.includes(event?.kind)) {
           try {
@@ -556,7 +594,8 @@ function fetchRelaySnapshot(url, kinds, timeoutMs = 1e4) {
         finish(true);
       } else if (verb === "CLOSED" && rest[0] === subscription) {
         closedReason = typeof rest[1] === "string" ? rest[1] : "closed";
-        finish(true);
+        if (closedReason.startsWith("auth-required")) requested = false;
+        else finish(true);
       } else if (verb === "NOTICE") {
         if (notices.length < 8) notices.push(String(rest[0] ?? ""));
       }
@@ -926,10 +965,13 @@ async function networkStatus(args) {
     list.push(offering);
     offeringsByProvider.set(offering.providerPubkey, list);
   }
+  const profilePubkeys = new Set(profiles.map((profile) => profile.pubkey));
+  const discoveredPubkeys = offerings.filter(
+    (offering) => !offering.parseError && profilePubkeys.has(offering.providerPubkey)
+  ).map((offering) => offering.providerPubkey);
   const providerPubkeys = /* @__PURE__ */ new Set([
-    ...profiles.map((profile) => profile.pubkey),
-    ...offerings.map((offering) => offering.providerPubkey),
-    ...pinnedPubkeys
+    ...pinnedPubkeys,
+    ...discoveredPubkeys
   ]);
   const relayIdsFor = (pubkey) => relayResults.filter(
     (entry) => entry.snapshot.events.some((event) => event.pubkey === pubkey)
@@ -1017,7 +1059,7 @@ var HEALTH_FILE_CANDIDATES = [
   "state/ownership.json"
 ];
 function defaultJoinDir() {
-  return process.env.IMMORTAL_JOIN_DIR ?? join3(homedir2(), "work", "immortal", "deploy", "join");
+  return process.env.IMMORTAL_JOIN_DIR ?? join3(homedir2(), ".local", "share", "immortal-public-regtest", "provider");
 }
 async function nodeHealth(args) {
   const joinDir = args.stateDir ?? defaultJoinDir();
@@ -1032,10 +1074,34 @@ async function nodeHealth(args) {
   }
   let compose;
   try {
+    const ownership = JSON.parse(
+      await readFile2(join3(joinDir, "ownership.json"), "utf8")
+    );
+    const repository = ownership.repository;
+    const project = ownership.compose_project;
+    const mode = ownership.mode;
+    if (ownership.schema !== "openagents.immortal.join-owner.v1" || typeof repository !== "string" || !repository.startsWith("/") || typeof project !== "string" || !/^immortal-join-[a-z0-9]{1,48}$/.test(project) || mode !== "provider" && mode !== "relay") {
+      throw new Error("ownership.json is invalid");
+    }
     const { stdout } = await execFileAsync(
       "docker",
-      ["compose", "ps", "--format", "json"],
-      { cwd: joinDir, timeout: 15e3, maxBuffer: 1024 * 1024 }
+      [
+        "compose",
+        "--project-directory",
+        repository,
+        "--project-name",
+        project,
+        "--env-file",
+        join3(joinDir, "compose.env"),
+        "--profile",
+        mode,
+        "-f",
+        join3(repository, "deploy", "join", "compose.yaml"),
+        "ps",
+        "--format",
+        "json"
+      ],
+      { cwd: repository, timeout: 15e3, maxBuffer: 1024 * 1024 }
     );
     const trimmed = stdout.trim();
     let services = [];
@@ -1072,7 +1138,11 @@ async function nodeHealth(args) {
     return toolError(
       "node_health_unavailable",
       `docker compose failed in ${joinDir} and no health/ownership JSON was found.`,
-      { joinDir, composeError: compose.error, checkedFiles: HEALTH_FILE_CANDIDATES }
+      {
+        joinDir,
+        composeError: compose.error,
+        checkedFiles: HEALTH_FILE_CANDIDATES
+      }
     );
   }
   return ok({
@@ -1155,8 +1225,8 @@ import { fileURLToPath } from "node:url";
 import { Effect as Effect2, Schema as Schema2 } from "effect";
 import WebSocket2 from "ws";
 import {
-  finalizeEvent,
-  generateSecretKey,
+  finalizeEvent as finalizeEvent2,
+  generateSecretKey as generateSecretKey2,
   getPublicKey,
   serializeSignedEvent,
   unwrapPrivateRecord,
@@ -1939,7 +2009,7 @@ async function getQuotes(args) {
       "The public-regtest manifest is not signed, bound, and ready."
     );
   }
-  const privateKey = generateSecretKey();
+  const privateKey = generateSecretKey2();
   const requesterPubkey = getPublicKey(privateKey);
   const client = await Effect2.runPromise(
     loadImmortalBrowserClient(await readRequesterWasm())
@@ -2092,7 +2162,7 @@ async function requestProviderQuote(client, route, privateKey, requesterPubkey, 
       })
     )
   );
-  const rfq = finalizeEvent(
+  const rfq = finalizeEvent2(
     {
       kind: signingRequest.kind,
       created_at: signingRequest.created_at,
@@ -2254,7 +2324,7 @@ async function withAuthenticatedRelay(relayUrl, privateKey, operation) {
       socket,
       async (message) => message[0] === "AUTH" && typeof message[1] === "string" ? message[1] : void 0
     );
-    const auth = finalizeEvent(
+    const auth = finalizeEvent2(
       {
         kind: 22242,
         created_at: Math.floor(Date.now() / 1e3),
@@ -2417,7 +2487,7 @@ function buildServer() {
     "network_status",
     {
       title: "Immortal network status",
-      description: "Read-only. Fetches the public regtest launch manifest envelope JSON, structure-checks it (envelope schema, kind 27237 signature event, content binding, regtest network id) and reports the signing pubkey and canonical manifest sha256 \u2014 signer trust-root pinning is NOT verified here and the result says so. Then fetches each pinned relay's NIP-11 document (Accept: application/nostr+json) and takes one bounded EOSE-terminated REQ snapshot of kinds 39600/39601 per relay (10 s cap). Returns a PanoramaNetwork-shaped JSON: relays (url, software, version, extensions, reachable), providers (pubkey, label, offerings summary, pinned vs discovered relative to the manifest), stats null where unknown. " + HARD_BOUNDARIES,
+      description: "Read-only. Fetches the public regtest launch manifest envelope JSON, structure-checks it (envelope schema, kind 27237 signature event, content binding, regtest network id) and reports the signing pubkey and canonical manifest sha256 \u2014 signer trust-root pinning is NOT verified here and the result says so. Then fetches each pinned relay's NIP-11 document (Accept: application/nostr+json), authenticates an ephemeral read-only identity with NIP-42, and takes one bounded EOSE-terminated REQ snapshot of kinds 39600/39601 per relay (10 s cap). Returns a PanoramaNetwork-shaped JSON: relays (url, software, version, extensions, reachable), providers (pubkey, label, offerings summary, pinned vs discovered relative to the manifest), stats null where unknown. " + HARD_BOUNDARIES,
       inputSchema: {
         manifestUrl: z.string().max(2048).optional().describe(
           "URL serving the raw public regtest manifest envelope JSON (schema openagents.bazaar.public-regtest-envelope.v1), e.g. <origin>/bazaar-public-regtest.json. Defaults to the IMMORTAL_MANIFEST_URL environment variable."
@@ -2431,7 +2501,7 @@ function buildServer() {
     "list_offerings",
     {
       title: "List live offerings",
-      description: "Read-only. Takes one bounded EOSE-terminated REQ snapshot of kind 39601 offering heads per given relay (10 s cap, signatures verified, newest head per coordinate) and returns normalized offerings: pairs (input/output asset ids), min/max amounts, fee bps, status, provider pubkey. " + HARD_BOUNDARIES,
+      description: "Read-only. NIP-42 authenticates an ephemeral identity and takes one bounded EOSE-terminated REQ snapshot of kind 39601 offering heads per given relay (10 s cap, signatures verified, newest head per coordinate) and returns normalized offerings: pairs (input/output asset ids), min/max amounts, fee bps, status, provider pubkey. " + HARD_BOUNDARIES,
       inputSchema: {
         relays: z.array(z.string().max(2048)).min(1).max(4).describe(
           "Regtest relay websocket URLs (wss://\u2026), usually from network_status."
@@ -2463,10 +2533,10 @@ function buildServer() {
     "node_health",
     {
       title: "Local join-kit node health",
-      description: "Read-only. Reports the local join-kit stack: `docker compose ps --format json` in the join directory (IMMORTAL_JOIN_DIR, default ~/work/immortal/deploy/join) plus any health/ownership JSON the kit wrote. Returns a clear not_found if the kit is not installed. " + HARD_BOUNDARIES,
+      description: "Read-only. Reports the local join-kit stack using its bounded ownership marker and Compose project, plus any health/ownership JSON the kit wrote (IMMORTAL_JOIN_DIR defaults to ~/.local/share/immortal-public-regtest/provider). Returns a clear not_found if the kit is not installed. " + HARD_BOUNDARIES,
       inputSchema: {
         stateDir: z.string().max(1024).optional().describe(
-          "Join-kit directory override (defaults to IMMORTAL_JOIN_DIR or ~/work/immortal/deploy/join)."
+          "Private join state directory (defaults to IMMORTAL_JOIN_DIR or ~/.local/share/immortal-public-regtest/provider)."
         )
       },
       annotations: { ...READ_ONLY, title: "Local join-kit node health" }
@@ -2490,7 +2560,7 @@ function buildServer() {
         ),
         gateway: z.string().max(2048).optional().describe("Public regtest gateway base URL (passed as --gateway)."),
         stateDir: z.string().max(1024).optional().describe(
-          "Absolute private state directory owned by this node (passed as --state-dir)."
+          "Absolute private state directory owned by this node (passed as --state-dir; defaults under ~/.local/share/immortal-public-regtest)."
         ),
         immortalDir: z.string().max(1024).optional().describe(
           "Immortal checkout override (defaults to IMMORTAL_DIR or ~/work/immortal)."

@@ -32,17 +32,22 @@ NIP-11 identity and reachability, and every provider currently publishing
 39600/39601 heads, split into `pinned` (in the manifest) and `discovered`
 (valid but unpinned).
 
-Note the relay websocket URLs and the `manifest.gatewayBaseUrl` — later steps
-need them.
+Note the relay websocket URLs and `manifest.gatewayBaseUrl`. For the current
+public regtest, use the P2P-only Bitcoin peer `34.41.78.122:18444`; port 18443
+is private RPC and must remain unreachable.
 
 ### 2. `spin_up_node` — bring up the local node (approval required)
 
 Call `spin_up_node` with `role: "provider"` (or `"relay"`), passing the relay
-URLs from step 1 and the gateway URL. This runs the immortal join kit
+URLs from step 1, `addnode: "34.41.78.122:18444"`, the gateway URL, and an
+absolute private `stateDir` outside the checkout (for example, resolve
+`~/.local/share/immortal-public-regtest/provider` to an absolute path). This
+runs the immortal join kit
 (`scripts/join-regtest.sh` in the checkout at `IMMORTAL_DIR`, default
 `~/work/immortal`); docker is required. The script starts bitcoind/CLN/
 `immortal-provider` with a fresh identity and publishes kind 39600 + 39601 on
-start. Expect several minutes; the tool streams progress and returns the last
+start. A provider join with a gateway performs its two bounded faucet requests
+itself. Expect several minutes; the tool streams progress and returns the last
 200 output lines with a 15-minute bound.
 
 If the tool reports `join_script_not_found`, the join kit (immortal#45) is not
@@ -57,9 +62,11 @@ health/ownership JSON in the join directory). Proceed when the compose
 services are up and the health summary looks sane. Keep the health JSON — you
 need it in step 6.
 
-### 4. `faucet_fund` — fund the node with regtest coins (approval required)
+### 4. `faucet_fund` — optional additional regtest funding (approval required)
 
-Get the node's funding address from the health output (it must start with
+The provider join already funds its on-chain and Lightning wallets when a
+gateway was supplied. If additional bounded funding is needed, get a funding
+address from the node (it must start with
 `bcrt1`), then call `faucet_fund` with the gateway URL, the address, and a
 bounded amount. The tool validates the `bcrt1` prefix client-side before any
 network call and polls the faucet status URL up to 60 seconds for `paid`.
@@ -90,5 +97,7 @@ to the pinned tier on the next manifest refresh (within ~300 s).
 Every tool returns typed JSON errors (`join_script_not_found`,
 `faucet_unavailable`, `manifest_unavailable`, …). Report them honestly and
 stop at the failing step; never fabricate network state, quotes, or funding.
-`get_quotes` is a deliberate v1 stub (`not_implemented`) — quoting runs in the
-verified browser engine, not in this server.
+`get_quotes` is live and no-spend: it creates an ephemeral requester identity,
+authenticates to the signed relays, sends separate gift-wrapped RFQs to the two
+pinned providers, validates both signed Quotes through the Immortal engine,
+selects deterministically, and discards the identity. It cannot order or fund.

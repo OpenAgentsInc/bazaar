@@ -20,6 +20,8 @@ const JOIN_DOC_URL =
   "https://github.com/OpenAgentsInc/immortal/blob/main/docs/join-regtest.md"
 const IMMORTAL_REPO_URL = "https://github.com/OpenAgentsInc/immortal"
 const RELAY_PLACEHOLDER = "wss://relay-a…,wss://relay-b…"
+const PUBLIC_REGTEST_ADDNODE = "34.41.78.122:18444"
+const PUBLIC_REGTEST_GATEWAY = "https://gateway.34-41-78-122.sslip.io"
 
 export interface NetworkPageProps {
   publicConfig: PublicRegtestConfigResult
@@ -43,9 +45,7 @@ export function NetworkPage({ publicConfig, live }: NetworkPageProps) {
           .filter((relay) => (relay.trust ?? "pinned") === "pinned")
           .map((relay) => relay.id)
   const relayArgument =
-    pinnedRelayUrls.length > 0
-      ? pinnedRelayUrls.join(",")
-      : RELAY_PLACEHOLDER
+    pinnedRelayUrls.length > 0 ? pinnedRelayUrls.join(",") : RELAY_PLACEHOLDER
 
   return (
     <main className="dark min-h-svh bg-background px-5 py-8 text-foreground sm:px-10">
@@ -85,9 +85,9 @@ export function NetworkPage({ publicConfig, live }: NetworkPageProps) {
             >
               <p className="font-mono text-sm">network map unavailable</p>
               <p className="max-w-md text-xs text-muted-foreground">
-                {view.detail} The map renders only from a signed public
-                launch manifest — nothing is fabricated while the deployment
-                is unconfigured.
+                {view.detail} The map renders only from a signed public launch
+                manifest — nothing is fabricated while the deployment is
+                unconfigured.
               </p>
               <p className="font-mono text-[0.625rem] text-muted-foreground">
                 {view.code}
@@ -118,18 +118,18 @@ export function NetworkPage({ publicConfig, live }: NetworkPageProps) {
           </p>
           <ul className="space-y-1 text-xs text-muted-foreground">
             <li>
-              <span className="font-mono text-foreground">pinned</span> —
-              relays and providers in the signed launch manifest: full color,
-              verified by the envelope, routable from the swap card.
+              <span className="font-mono text-foreground">pinned</span> — relays
+              and providers in the signed launch manifest: full color, verified
+              by the envelope, routable from the swap card.
             </li>
             <li>
               <span className="font-mono text-foreground">
                 discovered · unpinned
               </span>{" "}
-              — any additional provider publishing valid 39600/39601 heads on
-              a connected relay renders dimmed with an explicit unpinned tag.
-              Visible on the map within one relay snapshot, never routable
-              from the swap card until an operator re-signs the manifest.
+              — any additional provider publishing valid 39600/39601 heads on a
+              connected relay renders dimmed with an explicit unpinned tag.
+              Visible on the map within one relay snapshot, never routable from
+              the swap card until an operator re-signs the manifest.
             </li>
           </ul>
         </section>
@@ -168,8 +168,10 @@ export function NetworkPage({ publicConfig, live }: NetworkPageProps) {
           <pre className="overflow-x-auto rounded-xl border border-border bg-card p-4 font-mono text-xs leading-relaxed">
             <code>{`git clone ${IMMORTAL_REPO_URL} && cd immortal
 ./scripts/join-regtest.sh provider \\
-  --network public-regtest \\
-  --relays ${relayArgument}`}</code>
+  --relays ${relayArgument} \\
+  --addnode ${PUBLIC_REGTEST_ADDNODE} \\
+  --gateway ${PUBLIC_REGTEST_GATEWAY} \\
+  --state-dir ~/.local/share/immortal-public-regtest/provider`}</code>
           </pre>
           <p className="mt-3 text-xs text-muted-foreground">
             Full instructions:{" "}
@@ -182,9 +184,9 @@ export function NetworkPage({ publicConfig, live }: NetworkPageProps) {
               docs/join-regtest.md
             </a>
             . Listing stays a signed, human decision: the join kit ends by
-            printing a request-listing line, an operator re-signs the
-            manifest, and the node moves from discovered to pinned on the
-            next manifest refresh.
+            printing a request-listing line, an operator re-signs the manifest,
+            and the node moves from discovered to pinned on the next manifest
+            refresh.
           </p>
           <p className="mt-2 font-mono text-[0.625rem] text-muted-foreground">
             regtest sats — not real value

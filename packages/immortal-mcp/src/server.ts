@@ -42,8 +42,9 @@ export function buildServer(): McpServer {
         "Read-only. Fetches the public regtest launch manifest envelope JSON, structure-checks it (envelope schema, " +
         "kind 27237 signature event, content binding, regtest network id) and reports the signing pubkey and canonical " +
         "manifest sha256 — signer trust-root pinning is NOT verified here and the result says so. Then fetches each " +
-        "pinned relay's NIP-11 document (Accept: application/nostr+json) and takes one bounded EOSE-terminated " +
-        "REQ snapshot of kinds 39600/39601 per relay (10 s cap). Returns a PanoramaNetwork-shaped JSON: relays " +
+        "pinned relay's NIP-11 document (Accept: application/nostr+json), authenticates an ephemeral read-only " +
+        "identity with NIP-42, and takes one bounded EOSE-terminated REQ snapshot of kinds 39600/39601 per " +
+        "relay (10 s cap). Returns a PanoramaNetwork-shaped JSON: relays " +
         "(url, software, version, extensions, reachable), providers (pubkey, label, offerings summary, pinned vs " +
         "discovered relative to the manifest), stats null where unknown. " +
         HARD_BOUNDARIES,
@@ -68,8 +69,9 @@ export function buildServer(): McpServer {
     {
       title: "List live offerings",
       description:
-        "Read-only. Takes one bounded EOSE-terminated REQ snapshot of kind 39601 offering heads per given relay " +
-        "(10 s cap, signatures verified, newest head per coordinate) and returns normalized offerings: pairs " +
+        "Read-only. NIP-42 authenticates an ephemeral identity and takes one bounded EOSE-terminated REQ " +
+        "snapshot of kind 39601 offering heads per given relay (10 s cap, signatures verified, newest head per " +
+        "coordinate) and returns normalized offerings: pairs " +
         "(input/output asset ids), min/max amounts, fee bps, status, provider pubkey. " +
         HARD_BOUNDARIES,
       inputSchema: {
@@ -129,8 +131,9 @@ export function buildServer(): McpServer {
     {
       title: "Local join-kit node health",
       description:
-        "Read-only. Reports the local join-kit stack: `docker compose ps --format json` in the join directory " +
-        "(IMMORTAL_JOIN_DIR, default ~/work/immortal/deploy/join) plus any health/ownership JSON the kit wrote. " +
+        "Read-only. Reports the local join-kit stack using its bounded ownership marker and Compose project, " +
+        "plus any health/ownership JSON the kit wrote (IMMORTAL_JOIN_DIR defaults to " +
+        "~/.local/share/immortal-public-regtest/provider). " +
         "Returns a clear not_found if the kit is not installed. " +
         HARD_BOUNDARIES,
       inputSchema: {
@@ -139,7 +142,7 @@ export function buildServer(): McpServer {
           .max(1_024)
           .optional()
           .describe(
-            "Join-kit directory override (defaults to IMMORTAL_JOIN_DIR or ~/work/immortal/deploy/join)."
+            "Private join state directory (defaults to IMMORTAL_JOIN_DIR or ~/.local/share/immortal-public-regtest/provider)."
           ),
       },
       annotations: { ...READ_ONLY, title: "Local join-kit node health" },
@@ -189,7 +192,7 @@ export function buildServer(): McpServer {
           .max(1_024)
           .optional()
           .describe(
-            "Absolute private state directory owned by this node (passed as --state-dir)."
+            "Absolute private state directory owned by this node (passed as --state-dir; defaults under ~/.local/share/immortal-public-regtest)."
           ),
         immortalDir: z
           .string()

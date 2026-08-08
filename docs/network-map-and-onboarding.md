@@ -1,13 +1,13 @@
 # Live Network Map, Open Onboarding, and the Immortal MCP Surface
 
-Status: proposed (plan of record for the production regtest release)
+Status: implemented and live (public regtest acceptance recorded 2026-08-08)
 Companion spec: `docs/network-visualization-spec.md` (the viz system this
 builds on — all six catalogs are implemented and live in Storybook under
 `Immortal Viz`, including the birds-eye `ImmortalNetworkPanorama`).
 Upstream program: immortal#40 / immortal#44 (persistent public regtest
 service) and bazaar#6 / bazaar#10 (public deployment + remote acceptance).
-This document assumes that program lands; everything here layers on top of
-it without weakening its fail-closed boundaries.
+The program is live; everything here layers on top of it without weakening
+its fail-closed boundaries.
 
 ## 1. Goal
 
@@ -50,17 +50,17 @@ data, publish a join path, and wrap both in an MCP surface.**
 The browser is already the protocol host; the map should be built the same
 way — no server-side network crawler, no new trusted aggregator.
 
-| Datum | Source | Exists today |
-| --- | --- | --- |
-| Pinned relays, providers, gateway, revisions | signed launch manifest | yes |
-| Relay identity, software, version, extensions | NIP-11 over HTTPS | yes |
-| Socket state per relay lane | `RelayConnectionState` in the runtime | yes |
-| Provider liveness + profile | kind 39600 replaceable heads | yes |
-| Offerings: pairs, min/max, fee bps, status | kind 39601 heads | yes |
-| Completed-swap counts and redacted volume | kind 39603 public market receipts (consent-gated) | protocol yes; needs aggregation in the client |
-| Relay-observed rail evidence | kind 1985 NIP-32 observation labels | yes |
-| Gateway health | public health endpoint | yes (gateway) |
-| Lightning channel edges | not publicly enumerable — render only what the manifest/receipts imply | design constraint |
+| Datum                                         | Source                                                                 | Exists today                                  |
+| --------------------------------------------- | ---------------------------------------------------------------------- | --------------------------------------------- |
+| Pinned relays, providers, gateway, revisions  | signed launch manifest                                                 | yes                                           |
+| Relay identity, software, version, extensions | NIP-11 over HTTPS                                                      | yes                                           |
+| Socket state per relay lane                   | `RelayConnectionState` in the runtime                                  | yes                                           |
+| Provider liveness + profile                   | kind 39600 replaceable heads                                           | yes                                           |
+| Offerings: pairs, min/max, fee bps, status    | kind 39601 heads                                                       | yes                                           |
+| Completed-swap counts and redacted volume     | kind 39603 public market receipts (consent-gated)                      | protocol yes; needs aggregation in the client |
+| Relay-observed rail evidence                  | kind 1985 NIP-32 observation labels                                    | yes                                           |
+| Gateway health                                | public health endpoint                                                 | yes (gateway)                                 |
+| Lightning channel edges                       | not publicly enumerable — render only what the manifest/receipts imply | design constraint                             |
 
 Aggregating 39603 receipts client-side over a bounded window (e.g. the
 relay's retained heads) yields swaps/24h, volume/24h, and — since receipts
@@ -70,8 +70,8 @@ no sessions, no counterparties); that is the only optional server addition.
 
 ### 3.2 Trust tiers on the map
 
-The signed manifest is the trust boundary for *swapping*; it must not
-become a cap on *seeing*. The map renders two tiers:
+The signed manifest is the trust boundary for _swapping_; it must not
+become a cap on _seeing_. The map renders two tiers:
 
 - **Pinned** — relays/providers in the current manifest: full color, full
   interaction, "verified" badge derived from the envelope.
@@ -118,14 +118,17 @@ A single compose bundle + wrapper script in the immortal repo
 ```sh
 git clone https://github.com/OpenAgentsInc/immortal && cd immortal
 ./scripts/join-regtest.sh provider \
-  --network public-regtest \
-  --relays wss://relay-a.…,wss://relay-b.…
+  --relays wss://relay-a.34-41-78-122.nip.io,wss://relay-b.34-41-78-122.sslip.io \
+  --addnode 34.41.78.122:18444 \
+  --gateway https://gateway.34-41-78-122.sslip.io \
+  --state-dir ~/.local/share/immortal-public-regtest/provider
 ```
 
 The script must:
 
-1. Start bitcoind (regtest) and peer it with the published public regtest
-   addnode endpoints; verify chain tip matches the public network.
+1. Start bitcoind (regtest) and peer it with the P2P-only public endpoint
+   `34.41.78.122:18444`; verify chain tip matches the public network. Bitcoin
+   RPC at port 18443 remains closed.
 2. Start CLN, open a bounded channel to the sandbox wallet node once
    funded.
 3. Generate a fresh provider identity (never reuse demo keys), start
@@ -173,15 +176,18 @@ new server surface required for permissionless join.
   config, no omega code change:
 
   ```json
-  { "context_servers": {
+  {
+    "context_servers": {
       "immortal": { "command": "bunx", "args": ["@openagentsinc/immortal-mcp"] }
-  } }
+    }
+  }
   ```
 
   Tool IDs surface as `mcp:immortal:<tool>` for omega's per-profile
   allow/deny. (Omega also has a dormant Rust `McpServer`/`McpServerTool`
   in `crates/context_server/src/listener.rs` — a fine future in-process
   path, but it currently binds only a Unix socket; not the first target.)
+
 - **Client wiring — probe:** probe (now TS/Effect) has no MCP client; its
   `ProbeLlmTool` descriptor maps 1:1 onto MCP tools and its
   `tool-menu.ts` ref/policy model is where `tool.immortal.*` entries slot
@@ -192,21 +198,21 @@ new server surface required for permissionless join.
 
 Read-only (`allow` by default):
 
-| Tool | Does |
-| --- | --- |
+| Tool             | Does                                                                                                      |
+| ---------------- | --------------------------------------------------------------------------------------------------------- |
 | `network_status` | Verified manifest + NIP-11 + discovery snapshot → the `PanoramaNetwork` JSON (same shape the map renders) |
-| `list_offerings` | Live 39601 heads with min/max/fee/status per provider |
-| `get_quotes` | Run the published no-spend RFQ contract; return competing signed quotes + selection policy result |
-| `node_health` | Local join-kit node status (compose ps + provider health snapshot) |
+| `list_offerings` | Live 39601 heads with min/max/fee/status per provider                                                     |
+| `get_quotes`     | Run the published no-spend RFQ contract; return competing signed quotes + selection policy result         |
+| `node_health`    | Local join-kit node status (compose ps + provider health snapshot)                                        |
 
 Effectful (`approval_required` by default):
 
-| Tool | Does |
-| --- | --- |
-| `spin_up_node` | Run `join-regtest.sh provider\|relay` locally (docker required); stream progress |
-| `join_network` | Publish 39600/39601 for a healthy local provider to the public relays |
-| `faucet_fund` | Call the gateway faucet capability for a local regtest address |
-| `request_listing` | Open the prefilled pin-request issue (§4.2) |
+| Tool              | Does                                                                             |
+| ----------------- | -------------------------------------------------------------------------------- |
+| `spin_up_node`    | Run `join-regtest.sh provider\|relay` locally (docker required); stream progress |
+| `join_network`    | Publish 39600/39601 for a healthy local provider to the public relays            |
+| `faucet_fund`     | Call the gateway faucet capability for a local regtest address                   |
+| `request_listing` | Open the prefilled pin-request issue (§4.2)                                      |
 
 Hard boundaries, stated in every tool description: regtest only; the
 server never holds provider seeds (it drives the local daemon, which owns
@@ -228,6 +234,12 @@ The skill teaches: check `network_status` → `spin_up_node` → wait on
 in `network_status` (discovered tier) → optionally `request_listing`.
 A second thin skill, `read-the-network-map`, covers interpretation only
 (tiers, health glyphs, what the HUD numbers mean).
+
+The live acceptance joined a fresh provider in 56 seconds, including P2P
+sync, two paid faucet requests, provider health, signed discovery publication,
+and rendering as a ready unpinned provider on production `/network`. See the
+Immortal conformance record
+`docs/conformance/records/2026-08-08-public-regtest-p2p-join.json`.
 
 ## 6. Work breakdown
 

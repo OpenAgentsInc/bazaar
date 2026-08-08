@@ -30,12 +30,12 @@ Stated in every tool description and enforced in argument validation:
 
 Read-only (`readOnlyHint: true` — hosts may default-allow):
 
-| Tool             | Does                                                                                                                                                                                                                                                                                                                                          |
-| ---------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `network_status` | Fetches + structure-checks the manifest envelope (reports signing pubkey and canonical sha256; see verification depth below), fetches each relay's NIP-11, takes one bounded EOSE-terminated 39600/39601 snapshot per relay, and returns PanoramaNetwork-shaped JSON with `pinned` vs `discovered` providers. Stats are `null` where unknown. |
-| `list_offerings` | Bounded 39601 head snapshot per given relay → normalized offerings: pairs, min/max, fee bps, status, provider pubkey.                                                                                                                                                                                                                         |
-| `get_quotes`     | Loads the pinned Immortal requester WASM, discovers two eligible providers, opens authenticated relay lanes, sends separate NIP-59 RFQs, validates returned signed Quotes through the requester engine, and selects deterministically. The requester identity is ephemeral and the tool cannot order or spend.                                |
-| `node_health`    | Local join-kit status: `docker compose ps --format json` in the join dir (`IMMORTAL_JOIN_DIR`, default `~/work/immortal/deploy/join`) + the kit's health/ownership JSON, or a clear `join_kit_not_found`.                                                                                                                                     |
+| Tool             | Does                                                                                                                                                                                                                                                                                                                                                                                                |
+| ---------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `network_status` | Fetches + structure-checks the manifest envelope (reports signing pubkey and canonical sha256; see verification depth below), fetches each relay's NIP-11, NIP-42 authenticates an ephemeral read-only identity, takes one bounded EOSE-terminated 39600/39601 snapshot per relay, and returns PanoramaNetwork-shaped JSON with `pinned` vs `discovered` providers. Stats are `null` where unknown. |
+| `list_offerings` | NIP-42-authenticated bounded 39601 head snapshot per relay → normalized offerings: pairs, min/max, fee bps, status, provider pubkey.                                                                                                                                                                                                                                                                |
+| `get_quotes`     | Loads the pinned Immortal requester WASM, discovers two eligible providers, opens authenticated relay lanes, sends separate NIP-59 RFQs, validates returned signed Quotes through the requester engine, and selects deterministically. The requester identity is ephemeral and the tool cannot order or spend.                                                                                      |
+| `node_health`    | Local join-kit status: resolves the bounded ownership marker to its exact Compose project and reports services plus health/ownership JSON (`IMMORTAL_JOIN_DIR` defaults to `~/.local/share/immortal-public-regtest/provider`).                                                                                                                                                                      |
 
 Effectful (`readOnlyHint: false`, `destructiveHint: false` — descriptions
 instruct hosts to require approval):
@@ -58,11 +58,11 @@ node packages/immortal-mcp/dist/index.js           # built stdio server
 
 Environment:
 
-| Variable                | Meaning                                                                                     |
-| ----------------------- | ------------------------------------------------------------------------------------------- |
-| `IMMORTAL_MANIFEST_URL` | Default manifest envelope URL for `network_status` (`<origin>/bazaar-public-regtest.json`). |
-| `IMMORTAL_DIR`          | Immortal checkout for `spin_up_node`/`join_network` (default `~/work/immortal`).            |
-| `IMMORTAL_JOIN_DIR`     | Join-kit state dir for `node_health` (default `~/work/immortal/deploy/join`).               |
+| Variable                | Meaning                                                                                               |
+| ----------------------- | ----------------------------------------------------------------------------------------------------- |
+| `IMMORTAL_MANIFEST_URL` | Default manifest envelope URL for `network_status` (`<origin>/bazaar-public-regtest.json`).           |
+| `IMMORTAL_DIR`          | Immortal checkout for `spin_up_node`/`join_network` (default `~/work/immortal`).                      |
+| `IMMORTAL_JOIN_DIR`     | Private join state dir for `node_health` (default `~/.local/share/immortal-public-regtest/provider`). |
 
 ## Client wiring
 
@@ -140,5 +140,8 @@ the eight v1 tools with JSON schemas and annotations (read-only vs effectful),
 calls `request_listing` (pure) and asserts the GitHub URL shape, proves
 `get_quotes` refuses to open a network path without an explicit signed
 manifest, and asserts the mainnet-address rejection of `faucet_fund`.
-The live gate sends no-spend RFQs to the two manifest-pinned providers and
-requires two engine-validated signed Quotes plus a deterministic winner.
+The live gate requires authenticated discovery snapshots, then sends no-spend
+RFQs to the two manifest-pinned providers and requires two engine-validated
+signed Quotes plus a deterministic winner. Set
+`IMMORTAL_EXPECT_DISCOVERED_PROVIDER` to also require a specific ready,
+unpinned joiner during public acceptance.
